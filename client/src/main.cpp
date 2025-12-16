@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 
+#include "thinkfootball/brain.h"
 #include "thinkfootball/world_state.h"
 
 namespace
@@ -16,6 +17,10 @@ constexpr int kSidebarWidth = 360;
 constexpr int kWindowWidth = kGameWidth + kSidebarWidth;
 constexpr int kWindowHeight = 960;  // extra space for bottom panels
 constexpr float kTargetDt = 1.0f / 60.0f;
+constexpr float kPitchWidthM = 68.0f;   // meters (x-axis)
+constexpr float kPitchHeightM = 105.0f; // meters (z-axis)
+constexpr float kPixelsPerMeterX = kGameWidth / kPitchWidthM;
+constexpr float kPixelsPerMeterZ = kGameHeight / kPitchHeightM;
 
 std::string ResolveFontPath()
 {
@@ -43,6 +48,11 @@ std::vector<int> BuildKoreanCodepoints()
     for (int cp = 0xAC00; cp <= 0xD7A3; ++cp) cps.push_back(cp);
     cps.push_back(0);
     return cps;
+}
+
+Vector2 ToScreen(const tf::Vec3& p)
+{
+    return {p.x * kPixelsPerMeterX, p.z * kPixelsPerMeterZ};
 }
 }  // namespace
 
@@ -72,11 +82,84 @@ int main()
     }
 
     tf::WorldState world{};
-    world.ball.position = {kGameWidth * 0.5f, 0.0f, kGameHeight * 0.5f};
+    world.ball.pos = {kPitchWidthM * 0.5f, 0.0f, kPitchHeightM * 0.5f};
+    SeedRng(world, 42);
+    world.teams[0].name = "Home";
+    world.teams[1].name = "Away";
+    world.teams[0].tactics = {0.55f, 0.55f, 0.65f, 0.5f, 0.6f};
+    world.teams[1].tactics = {0.45f, 0.50f, 0.55f, 0.55f, 0.55f};
+
+    // Simple two players with chase-ball brains.
+    tf::Player p1;
+    p1.id = 0;
+    p1.name = "Home_1";
+    p1.teamIndex = 0;
+    p1.state.position = {kPitchWidthM * 0.4f, 0.0f, kPitchHeightM * 0.6f};
+    p1.intent.targetPos = p1.state.position;
+    p1.stats.speed = 0.8f;
+    p1.stats.accel = 0.8f;
+
+    tf::Player p2;
+    p2.id = 1;
+    p2.name = "Away_1";
+    p2.teamIndex = 1;
+    p2.state.position = {kPitchWidthM * 0.8f, 0.0f, kPitchHeightM * 0.4f};
+    p2.intent.targetPos = p2.state.position;
+    p2.stats.speed = 0.8f;
+    p2.stats.accel = 0.8f;
+
+    world.players.push_back(p1);
+    world.players.push_back(p2);
+
+    tf::MovementArcade moveController;
+    tf::BrainChaseBall brainChase;
+    tf::TeamBrain teamBrain;
+    int tickCount = 0;
 
     while (!WindowShouldClose())
     {
         tf::AdvanceClock(world, kTargetDt);
+        ++tickCount;
+
+        tf::GroupContext ctx;
+        ctx.ballPos = world.ball.pos;
+        ctx.pitchWidth = kPitchWidthM;
+        ctx.pitchHeight = kPitchHeightM;
+        teamBrain.ApplyTactics(world, ctx);
+        for (auto& player : world.players)
+        {
+            TickPlayerWithBrain(player, world, ctx, moveController, brainChase, kTargetDt);
+        }
+
+        // Simple ball pickup/follow logic.
+        const float controlRadius = 0.7f; // meters
+        if (world.ball.mode == tf::BallMode::Controlled)
+        {
+            for (const auto& player : world.players)
+            {
+                if (player.id == world.ball.ownerPlayerId)
+                {
+                    world.ball.pos = player.state.position;
+                    break;
+                }
+            }
+        }
+        else
+        {
+            for (const auto& player : world.players)
+            {
+                float dx = player.state.position.x - world.ball.pos.x;
+                float dz = player.state.position.z - world.ball.pos.z;
+                float dist2 = dx * dx + dz * dz;
+                if (dist2 <= controlRadius * controlRadius)
+                {
+                    tf::BallClaimControl(world.ball, player.id, player.teamIndex, tickCount, player.state.position);
+                    break;
+                }
+            }
+        }
+
+        tf::BallTick(world.ball, tickCount, kTargetDt);
 
         BeginDrawing();
         ClearBackground(DARKGREEN);
@@ -89,11 +172,24 @@ int main()
 
         // Game area frame
         DrawRectangleLines((int)gameArea.x + 20, (int)gameArea.y + 40, (int)gameArea.width - 40, (int)gameArea.height - 80, RAYWHITE);
-        DrawCircle((int)world.ball.position.x, (int)world.ball.position.z, 6.0f, ORANGE);
+        // Players and ball
+        for (const auto& player : world.players)
+        {
+            Vector2 sp = ToScreen(player.state.position);
+            Color c = (player.teamIndex == 0) ? SKYBLUE : RED;
+            DrawCircle((int)sp.x, (int)sp.y, 10.0f, c);
+            DrawCircleLines((int)sp.x, (int)sp.y, 12.0f, DARKGRAY);
+            Vector2 labelPos{sp.x - 16.0f, sp.y - 26.0f};
+            DrawTextEx(hudFont, player.name.c_str(), labelPos, 28.0f, 0.0f, DARKGRAY);
+        }
+        {
+            Vector2 bp = ToScreen(world.ball.pos);
+            DrawCircle((int)bp.x, (int)bp.y, 6.0f, ORANGE);
+        }
 
         // HUD text inside game area
         const char* hud = reinterpret_cast<const char*>(u8"Think Football – 전략형 축구 시뮬레이션");
-        DrawTextEx(hudFont, hud, {24, 20}, 24.0f, 0.0f, RAYWHITE);
+        DrawTextEx(hudFont, hud, {24, 20}, 36.0f, 0.0f, DARKGRAY);
 
         // Sidebar top: info_aux
         GuiPanel(sidebarTop, "Info");

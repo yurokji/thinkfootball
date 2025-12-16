@@ -1,5 +1,9 @@
 add_library(thinkfootball_core STATIC
     src/world_state.cpp
+    src/pitch_zones.cpp
+    src/movement.cpp
+    src/ball_state.cpp
+    src/brain.cpp
 )
 
 target_include_directories(thinkfootball_core
