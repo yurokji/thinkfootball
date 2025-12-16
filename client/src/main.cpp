@@ -242,6 +242,22 @@ int main()
     int scoreHome = 0;
     int scoreAway = 0;
     bool showVision = true;
+    std::uniform_real_distribution<float> stealChance(0.0f, 1.0f);
+    std::uniform_real_distribution<float> knockAngle(0.0f, 2.0f * PI);
+    enum class RestartType
+    {
+        None,
+        GoalKick,
+        Corner,
+        ThrowIn
+    };
+    RestartType restartMode = RestartType::None;
+    int restartTeam = -1;
+    tf::Vec3 restartSpot{};
+    int restartResumeTick = 0;
+    bool restartKickPending = false;
+    tf::Vec3 restartKickTarget{};
+    int restartKickerId = -1;
 
     while (!WindowShouldClose())
     {
@@ -263,6 +279,74 @@ int main()
         // Reset hasBall flags.
         for (auto& player : world.players) player.state.hasBall = false;
 
+        // Handle restart delays: keep ball parked until resume tick.
+        if (restartMode != RestartType::None)
+        {
+            world.ball.pos = restartSpot;
+            world.ball.vel = {0, 0, 0};
+            world.ball.ownerPlayerId = -1;
+            world.ball.mode = tf::BallMode::FreeGround;
+            if (tickCount >= restartResumeTick)
+            {
+                // Pick kicker nearest to restartSpot on restartTeam.
+                tf::Player* kicker = nullptr;
+                float bestDist2 = 1e9f;
+                for (auto& p : world.players)
+                {
+                    if (p.teamIndex != restartTeam) continue;
+                    float dx = p.state.position.x - restartSpot.x;
+                    float dz = p.state.position.z - restartSpot.z;
+                    float d2 = dx * dx + dz * dz;
+                    if (d2 < bestDist2)
+                    {
+                        bestDist2 = d2;
+                        kicker = &p;
+                    }
+                }
+                if (kicker)
+                {
+                    kicker->state.position = restartSpot;
+                    kicker->intent.targetPos = restartSpot;
+                    tf::BallClaimControl(world.ball, kicker->id, kicker->teamIndex, tickCount, kicker->state.position);
+
+                    // Simple restart pass target: farthest forward teammate, else clear into space toward opponent goal and center line.
+                    float bestFwd = (restartTeam == 0) ? -1e9f : 1e9f;
+                    tf::Vec3 bestPos = restartSpot;
+                    for (auto& mate : world.players)
+                    {
+                        if (mate.teamIndex != restartTeam || mate.id == kicker->id) continue;
+                        if (restartTeam == 0)
+                        {
+                            if (mate.state.position.x > bestFwd)
+                            {
+                                bestFwd = mate.state.position.x;
+                                bestPos = mate.state.position;
+                            }
+                        }
+                        else
+                        {
+                            if (mate.state.position.x < bestFwd)
+                            {
+                                bestFwd = mate.state.position.x;
+                                bestPos = mate.state.position;
+                            }
+                        }
+                    }
+                    if ((bestFwd == -1e9f && restartTeam == 0) || (bestFwd == 1e9f && restartTeam == 1))
+                    {
+                        float dir = (restartTeam == 0) ? 1.0f : -1.0f;
+                        bestPos = {restartSpot.x + dir * 15.0f, 0.0f, world.pitch.width * 0.5f};
+                    }
+                    kicker->intent.targetPos = bestPos;
+                    kicker->intent.action = tf::RequestedAction::Pass;
+                    restartKickPending = true;
+                    restartKickTarget = bestPos;
+                    restartKickerId = kicker->id;
+                }
+                restartMode = RestartType::None;
+            }
+        }
+
         // Handle possession/pass actions.
         const float controlRadius = 0.7f; // meters
         if (world.ball.mode == tf::BallMode::Controlled)
@@ -272,7 +356,27 @@ int main()
                 if (player.id == world.ball.ownerPlayerId)
                 {
                     player.state.hasBall = true;
-                    if (player.intent.action == tf::RequestedAction::Pass)
+                    // Auto-kick on restart if pending.
+                    if (restartKickPending && player.id == restartKickerId)
+                    {
+                        tf::Vec3 target = restartKickTarget;
+                        tf::Vec3 dir{target.x - player.state.position.x, 0.0f, target.z - player.state.position.z};
+                        float len = std::sqrt(dir.x * dir.x + dir.z * dir.z);
+                        if (len > 0.5f)
+                        {
+                            dir.x /= len;
+                            dir.z /= len;
+                            const float passSpeed = 18.0f;
+                            tf::Vec3 vel{dir.x * passSpeed, 0.0f, dir.z * passSpeed};
+                            tf::Vec3 startPos{player.state.position.x + dir.x * 0.5f, 0.0f, player.state.position.z + dir.z * 0.5f};
+                            tf::BallKickGround(world.ball, player.id, player.teamIndex, tickCount, startPos, vel);
+                            passBlockId = player.id;
+                            passBlockUntil = tickCount + 30;
+                        }
+                        restartKickPending = false;
+                        restartKickerId = -1;
+                    }
+                    else if (player.intent.action == tf::RequestedAction::Pass)
                     {
                         tf::Vec3 target = ClampToPitch(player.intent.targetPos);
                         tf::Vec3 dir{target.x - player.state.position.x, 0.0f, target.z - player.state.position.z};
@@ -312,6 +416,67 @@ int main()
                     {
                         world.ball.pos = player.state.position;
                     }
+                }
+            }
+
+            // Possession contests: opponents near the owner may steal or knock loose.
+            for (auto& player : world.players)
+            {
+                if (player.id == world.ball.ownerPlayerId) continue;
+                float dx = player.state.position.x - world.ball.pos.x;
+                float dz = player.state.position.z - world.ball.pos.z;
+                float dist2 = dx * dx + dz * dz;
+                if (dist2 <= 1.2f * 1.2f)
+                {
+                    // Simple probabilistic steal/loose ball.
+                    float dist = std::sqrt(dist2);
+                    float stealProb = 0.7f + (1.2f - dist) * 0.3f; // up to 1.0
+
+                    // Facing/touchline bias: if owner near touchline and defender facing outward, raise steal/throw-out chance.
+                    float outwardX = 0.0f, outwardZ = 0.0f;
+                    const float touchThresh = 2.0f;
+                    if (world.ball.pos.z < touchThresh)
+                    {
+                        outwardZ = -1.0f;
+                    }
+                    else if (world.ball.pos.z > world.pitch.width - touchThresh)
+                    {
+                        outwardZ = 1.0f;
+                    }
+                    float fx = std::sin(player.state.facingRadians);
+                    float fz = std::cos(player.state.facingRadians);
+                    if (outwardZ != 0.0f)
+                    {
+                        float dot = fx * outwardX + fz * outwardZ;
+                        if (dot > 0.3f) stealProb = std::min(1.0f, stealProb + 0.2f);
+                    }
+
+                    float r = stealChance(world.rng);
+                    if (r < stealProb)
+                    {
+                        // Steal
+                        tf::BallClaimControl(world.ball, player.id, player.teamIndex, tickCount, player.state.position);
+                        player.state.hasBall = true;
+                        // Kick attacker away directionally to avoid instant steal-back
+                        float ang = knockAngle(world.rng);
+                        // If near touchline, bias away from line
+                        if (outwardZ != 0.0f) ang = (outwardZ < 0) ? -PI * 0.5f : PI * 0.5f;
+                        player.intent.targetPos = {player.state.position.x + std::cos(ang) * 8.0f, 0.0f, player.state.position.z + std::sin(ang) * 8.0f};
+                        player.intent.action = tf::RequestedAction::None;
+                        passBlockId = player.id;
+                        passBlockUntil = tickCount + 30;
+                    }
+                    else
+                    {
+                        // Loose ball knock out
+                        float ang = knockAngle(world.rng);
+                        if (outwardZ != 0.0f) ang = (outwardZ < 0) ? -PI * 0.5f : PI * 0.5f;
+                        tf::Vec3 vel{std::cos(ang) * 10.0f, 0.0f, std::sin(ang) * 10.0f};
+                        tf::Vec3 startPos{world.ball.pos.x + vel.x * 0.1f, 0.0f, world.ball.pos.z + vel.z * 0.1f};
+                        tf::BallKickGround(world.ball, world.ball.ownerPlayerId, world.ball.lastTouch.teamId, tickCount, startPos, vel);
+                        world.ball.ownerPlayerId = -1;
+                        passBlockId = -1;
+                    }
                     break;
                 }
             }
@@ -336,6 +501,48 @@ int main()
         }
 
         tf::BallTick(world.ball, tickCount, tfc::kTargetDt);
+        // Out-of-play handling: goal/goal-kick/corner/throw-in.
+        bool oobEndline = (world.ball.pos.x < 0.0f) || (world.ball.pos.x > world.pitch.length);
+        bool oobSideline = (world.ball.pos.z < 0.0f) || (world.ball.pos.z > world.pitch.width);
+        if ((oobEndline || oobSideline) && restartMode == RestartType::None)
+        {
+            int lastTeam = world.ball.lastTouch.teamId;
+            if (oobEndline)
+            {
+                int defendingTeam = (world.ball.pos.x < 0.0f) ? 0 : 1;
+                int attackingTeam = 1 - defendingTeam;
+                bool corner = (lastTeam == defendingTeam);  // deflected by defender
+                if (corner)
+                {
+                    restartMode = RestartType::Corner;
+                    restartTeam = attackingTeam;
+                    float cornerX = (defendingTeam == 0) ? 0.0f : world.pitch.length;
+                    float cornerZ = (world.ball.pos.z < world.pitch.width * 0.5f) ? 0.0f : world.pitch.width;
+                    restartSpot = {cornerX, 0.0f, cornerZ};
+                }
+                else
+                {
+                    restartMode = RestartType::GoalKick;
+                    restartTeam = defendingTeam;
+                    const auto& ga = world.pitch.goalArea[defendingTeam];
+                    float spotX = (defendingTeam == 0) ? ga.x + ga.width + 0.5f : ga.x - 0.5f;
+                    float spotZ = world.pitch.width * 0.5f;
+                    restartSpot = {spotX, 0.0f, spotZ};
+                }
+            }
+            else if (oobSideline)
+            {
+                restartMode = RestartType::ThrowIn;
+                restartTeam = (lastTeam == 0) ? 1 : 0;  // opponent throws
+                float spotX = std::clamp(world.ball.pos.x, 0.0f, world.pitch.length);
+                float spotZ = (world.ball.pos.z < 0.0f) ? 0.0f : world.pitch.width;
+                restartSpot = {spotX, 0.0f, spotZ};
+            }
+            restartResumeTick = tickCount + 60;  // ~1 second delay
+            world.ball.ownerPlayerId = -1;
+            world.ball.mode = tf::BallMode::FreeGround;
+            world.ball.vel = {0, 0, 0};
+        }
         // Goal detection
         const float halfGoal = world.pitch.goalWidth * 0.5f;
         bool scored = false;

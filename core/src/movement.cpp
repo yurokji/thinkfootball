@@ -31,6 +31,8 @@ Vec3 NormalizeXZ(const Vec3& v)
 void ApplySeparation(Player& self, const WorldState& world, float dt, float radius, float strength)
 {
     Vec3 push{0, 0, 0};
+    // Only apply mild separation to avoid "blocking" when trying to tackle.
+    float effectiveStrength = strength * 0.25f;  // further reduced
     for (const Player& other : world.players)
     {
         if (&other == &self) continue;
@@ -43,8 +45,8 @@ void ApplySeparation(Player& self, const WorldState& world, float dt, float radi
             push.z += (delta.z / dist) * scale;
         }
     }
-    self.state.velocity.x += push.x * strength * dt;
-    self.state.velocity.z += push.z * strength * dt;
+    self.state.velocity.x += push.x * effectiveStrength * dt;
+    self.state.velocity.z += push.z * effectiveStrength * dt;
 }
 }  // namespace
 
@@ -60,7 +62,9 @@ void MovementArcade::Tick(Player& player, const WorldState& world, float dtSecon
     // Human-like movement in meters/sec and meters/sec^2.
     const float baseMaxSpeedMps = 7.5f;   // ~elite sprint
     const float baseAccelMps2 = 6.5f;     // faster accel to turn quicker
-    float maxSpeed = player.stats.speed * baseMaxSpeedMps;
+    bool ownsBall = (world.ball.mode == BallMode::Controlled && world.ball.ownerPlayerId == player.id);
+    float speedMult = ownsBall ? 0.5f : 1.30f;  // make on-ball slower, off-ball faster
+    float maxSpeed = player.stats.speed * baseMaxSpeedMps * speedMult;
     float accel = player.stats.accel * baseAccelMps2;
     float desiredSpeed = player.intent.desiredSpeed01 * maxSpeed;
 
