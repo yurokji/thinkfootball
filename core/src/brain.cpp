@@ -23,6 +23,17 @@ inline float Length2D(float x, float z)
     return std::sqrt(x * x + z * z);
 }
 
+inline float Hash01(uint32_t a, uint32_t b, uint32_t c)
+{
+    uint32_t x = a * 0x9E3779B1u ^ b * 0x7F4A7C15u ^ c * 0x94D049BBu;
+    x ^= x >> 16;
+    x *= 0x7FEB352Du;
+    x ^= x >> 15;
+    x *= 0x846CA68Bu;
+    x ^= x >> 16;
+    return (x & 0xFFFFFFu) / float(0x1000000u);  // [0,1)
+}
+
 inline Vec3 RotateY(const Vec3& v, float ang)
 {
     float s = std::sin(ang);
@@ -33,7 +44,9 @@ inline Vec3 RotateY(const Vec3& v, float ang)
 VisionInfo CollectVision(const Player& viewer, const WorldState& world, float rangeBase, float halfAngleRad)
 {
     VisionInfo info{};
-    float range = rangeBase * (0.6f + viewer.stats.awareness * 0.8f);
+    float breath = std::clamp(viewer.condition.breath, 0.0f, 1.0f);
+    float range = rangeBase * (0.6f + viewer.stats.awareness * 0.8f) * (0.55f + 0.45f * breath);
+    float halfAng = halfAngleRad * (0.65f + 0.55f * breath);  // winded -> narrower vision
     float dirX = std::sin(viewer.state.facingRadians);
     float dirZ = std::cos(viewer.state.facingRadians);
 
@@ -48,7 +61,7 @@ VisionInfo CollectVision(const Player& viewer, const WorldState& world, float ra
         if (dist < 1e-3f) continue;
         float dot = (dirX * dx + dirZ * dz) / dist;
         float ang = std::acos(std::clamp(dot, -1.0f, 1.0f));
-        if (ang <= halfAngleRad && p.teamIndex != viewer.teamIndex)
+        if (ang <= halfAng && p.teamIndex != viewer.teamIndex)
         {
             if (dist < info.nearestOppDist)
             {
@@ -97,21 +110,47 @@ void BrainChaseBall::Think(Player& player, const WorldState& world, const GroupC
     const auto& tctx = ctx.team[teamIndex];
 
     Vec3 target = ctx.ballPos;
-    // If another player already controls the ball, stop just outside a small buffer to avoid stacking.
+    // If teammate controls the ball, hold a support distance instead of crowding.
     if (world.ball.mode == BallMode::Controlled && world.ball.ownerPlayerId != player.id)
     {
-        const float buffer = 2.5f;  // meters
-        Vec3 toBall{target.x - player.state.position.x, 0.0f, target.z - player.state.position.z};
-        float dist = std::sqrt(toBall.x * toBall.x + toBall.z * toBall.z);
-        if (dist > 1e-3f && dist > buffer)
+        const Player* owner = nullptr;
+        for (const auto& p : world.players)
         {
-            float scale = (dist - buffer) / dist;
-            target.x = player.state.position.x + toBall.x * scale;
-            target.z = player.state.position.z + toBall.z * scale;
+            if (p.id == world.ball.ownerPlayerId)
+            {
+                owner = &p;
+                break;
+            }
+        }
+        if (owner && owner->teamIndex == player.teamIndex)
+        {
+                Vec3 toGoal{(teamIndex == 0 ? ctx.pitchWidth : 0.0f) - owner->state.position.x, 0.0f, ctx.pitchHeight * 0.5f - owner->state.position.z};
+                float len = Length2D(toGoal.x, toGoal.z);
+                Vec3 fwd = (len > 1e-3f) ? Vec3{toGoal.x / len, 0.0f, toGoal.z / len} : Vec3{(teamIndex == 0) ? 1.0f : -1.0f, 0.0f, 0.0f};
+                Vec3 perp{-fwd.z, 0.0f, fwd.x};
+                float sideSign = (Hash01(static_cast<uint32_t>(player.id), static_cast<uint32_t>(world.ball.touchSeq), 77) < 0.5f) ? 1.0f : -1.0f;
+                float supportDist = 14.0f;      // keep 14m away
+                float lateral = 6.0f * sideSign; // spread sideways
+                target.x = owner->state.position.x - fwd.x * 4.0f + perp.x * lateral;
+                target.z = owner->state.position.z - fwd.z * 4.0f + perp.z * lateral;
+                player.intent.desiredSpeed01 = 0.35f;
         }
         else
         {
-            target = player.state.position;  // stay put if already within buffer
+            const float buffer = 4.0f;  // meters
+            Vec3 toBall{target.x - player.state.position.x, 0.0f, target.z - player.state.position.z};
+            float dist = std::sqrt(toBall.x * toBall.x + toBall.z * toBall.z);
+            if (dist > 1e-3f && dist > buffer)
+            {
+                float scale = (dist - buffer) / dist;
+                target.x = player.state.position.x + toBall.x * scale;
+                target.z = player.state.position.z + toBall.z * scale;
+            }
+            else
+            {
+                target = player.state.position;  // stay put if already within buffer
+                player.intent.desiredSpeed01 = 0.05f;
+            }
         }
     }
 
@@ -142,6 +181,7 @@ void BrainSimplePossession::Think(Player& player, const WorldState& world, const
     const int teamIndex = std::clamp(player.teamIndex, 0, 1);
     const auto& tactics = world.teams[teamIndex].tactics;
     const auto& tctx = ctx.team[teamIndex];
+    float breath = std::clamp(player.condition.breath, 0.0f, 1.0f);
 
     const bool ownsBall = (world.ball.mode == BallMode::Controlled && world.ball.ownerPlayerId == player.id);
 
@@ -178,7 +218,7 @@ void BrainSimplePossession::Think(Player& player, const WorldState& world, const
         target.x = std::clamp(target.x, 0.0f, ctx.pitchWidth);
         target.z = std::clamp(target.z, 0.0f, ctx.pitchHeight);
 
-        speed01 = 0.9f;  // faster default dribble
+        speed01 = 0.9f * (0.7f + 0.3f * breath);  // winded -> slower default dribble
 
         // Slow when threat is close in vision.
         if (vision.nearestOppDist < 7.0f)
@@ -251,6 +291,10 @@ void BrainSimplePossession::Think(Player& player, const WorldState& world, const
                 linePenalty += (futureZ - (ctx.pitchHeight - lineMargin)) * 3.0f;
 
             float score = (nd.x * fwdDir.x + nd.z * fwdDir.z) * 1.5f - anglePenalty - threatPenalty - corridorPenalty - linePenalty;
+            // Mild per-player randomness to avoid identical choices.
+            float randJitter = Hash01(static_cast<uint32_t>(player.id), static_cast<uint32_t>(world.ball.touchSeq), 101);
+            score += (randJitter - 0.5f) * 1.0f;
+            score -= (1.0f - breath) * 6.0f;  // low breath hurts dribble confidence
             if (score > bestScore)
             {
                 bestScore = score;
@@ -308,8 +352,8 @@ void BrainSimplePossession::Think(Player& player, const WorldState& world, const
             float dirZ = std::cos(player.state.facingRadians);
             float dot = (dirX * dx + dirZ * dz) / std::max(dist, 1e-3f);
             float ang = std::acos(std::clamp(dot, -1.0f, 1.0f));
-            float halfAng = 40.0f * (kPi / 180.0f);
-            float visRange = 20.0f * (0.6f + player.stats.awareness * 0.8f);
+            float halfAng = 40.0f * (kPi / 180.0f) * (0.65f + 0.55f * breath);
+            float visRange = 20.0f * (0.6f + player.stats.awareness * 0.8f) * (0.55f + 0.45f * breath);
             if (ang > halfAng || dist > visRange) continue;
 
             float laneCenter = ctx.pitchHeight * 0.5f;
@@ -317,8 +361,8 @@ void BrainSimplePossession::Think(Player& player, const WorldState& world, const
             // Penalize short passes and lanes crowded by opponents.
             float score = (50.0f - dist) * 1.0f + forward * 0.5f - widthPenalty * 0.1f;
             if (forward <= 0.0f) score *= 0.8f;  // prefer forward, but allow back with penalty
-            if (mate.id == lastPasser) score -= 10.0f;    // discourage immediate ping-pong
-            if (dist < 12.0f) score -= (12.0f - dist) * 1.0f; // penalize very short ping-pong
+            if (mate.id == lastPasser) score -= 8.0f;    // discourage immediate ping-pong but allow escape
+            if (dist < 10.0f) score -= (10.0f - dist) * 0.5f; // soften penalty for short outlet
             // Opponent clearance along pass lane
             float minGap = 99.f;
             for (const auto& opp : world.players)
@@ -335,7 +379,12 @@ void BrainSimplePossession::Think(Player& player, const WorldState& world, const
                 float gap = std::sqrt(gx * gx + gz * gz);
                 minGap = std::min(minGap, gap);
             }
-            if (minGap < 5.0f) score -= (5.0f - minGap) * 4.0f;
+            if (minGap < 5.0f) score -= (5.0f - minGap) * 2.0f; // less strict so passes still chosen
+
+            // Winded players want to offload + randomize choices per player/time.
+            score += (1.0f - breath) * 18.0f;
+            float randJitter = Hash01(static_cast<uint32_t>(player.id), static_cast<uint32_t>(mate.id), static_cast<uint32_t>(world.ball.touchSeq + world.clock.timeSeconds * 10.0f));
+            score += (randJitter - 0.5f) * 8.0f;
 
             if (forward > 0.3f && score > bestForwardScore)
             {
@@ -374,7 +423,52 @@ void BrainSimplePossession::Think(Player& player, const WorldState& world, const
     }
     else
     {
-        // Chase-with-buffer as in BrainChaseBall.
+        // Off-ball: defend or support spacing.
+        if (world.ball.mode == BallMode::Controlled)
+        {
+            const Player* owner = nullptr;
+            for (const auto& p : world.players)
+            {
+                if (p.id == world.ball.ownerPlayerId)
+                {
+                    owner = &p;
+                    break;
+                }
+            }
+            if (owner && owner->teamIndex == teamIndex && owner->id != player.id)
+            {
+                // Support spacing: stay 10–18m away, lateral offset to open lanes.
+                Vec3 toGoal{(teamIndex == 0 ? ctx.pitchWidth : 0.0f) - owner->state.position.x, 0.0f, ctx.pitchHeight * 0.5f - owner->state.position.z};
+                float len = Length2D(toGoal.x, toGoal.z);
+                Vec3 fwd = (len > 1e-3f) ? Vec3{toGoal.x / len, 0.0f, toGoal.z / len} : Vec3{(teamIndex == 0) ? 1.0f : -1.0f, 0.0f, 0.0f};
+                Vec3 perp{-fwd.z, 0.0f, fwd.x};
+                float sideSign = (player.id % 2 == 0) ? 1.0f : -1.0f;
+                float distBack = 6.0f;
+                float supportDist = 12.0f + (player.id % 3) * 2.0f;  // 12–16m
+                target.x = owner->state.position.x - fwd.x * distBack + perp.x * (sideSign * supportDist * 0.5f);
+                target.z = owner->state.position.z - fwd.z * distBack + perp.z * (sideSign * supportDist * 0.5f);
+                speed01 = 0.35f;
+            }
+            else
+            {
+                // Defending: keep a buffer when someone else owns the ball.
+                const float buffer = 4.0f;
+                Vec3 toBall{target.x - player.state.position.x, 0.0f, target.z - player.state.position.z};
+                float dist = std::sqrt(toBall.x * toBall.x + toBall.z * toBall.z);
+                if (dist > buffer && dist > 1e-3f)
+                {
+                    float scale = (dist - buffer) / dist;
+                    target.x = player.state.position.x + toBall.x * scale;
+                    target.z = player.state.position.z + toBall.z * scale;
+                }
+                else
+                {
+                    target = player.state.position;
+                    speed01 = 0.05f;  // back off instead of stacking
+                }
+            }
+        }
+
         const float pressBand = ctx.pitchHeight * (0.05f + tactics.pressIntensity * 0.1f);
         if (teamIndex == 0)
         {
@@ -389,23 +483,6 @@ void BrainSimplePossession::Think(Player& player, const WorldState& world, const
         const float minZ = centerZ - tctx.halfWidth;
         const float maxZ = centerZ + tctx.halfWidth;
         target.z = std::clamp(target.z, minZ, maxZ);
-
-        if (world.ball.mode == BallMode::Controlled)
-        {
-            const float buffer = 2.5f;
-            Vec3 toBall{target.x - player.state.position.x, 0.0f, target.z - player.state.position.z};
-            float dist = std::sqrt(toBall.x * toBall.x + toBall.z * toBall.z);
-            if (dist > buffer && dist > 1e-3f)
-            {
-                float scale = (dist - buffer) / dist;
-                target.x = player.state.position.x + toBall.x * scale;
-                target.z = player.state.position.z + toBall.z * scale;
-            }
-            else
-            {
-                target = player.state.position;
-            }
-        }
     }
 
     player.intent.targetPos = target;

@@ -98,9 +98,10 @@ void DrawHeading(const tf::Vec3& pos, float facingRadians, float radius, const V
 
 void DrawVisionCone(const tf::Player& player, const Vector2& origin, float scale)
 {
-    // Range scales modestly with awareness stat.
-    float range = tfc::kVisionRangeBase * (0.6f + player.stats.awareness * 0.8f);
-    float halfAngle = tfc::kVisionHalfAngleDeg * (PI / 180.0f);
+    // Range scales with awareness and shrinks when breath is low.
+    float breath = std::clamp(player.condition.breath, 0.0f, 1.0f);
+    float range = tfc::kVisionRangeBase * (0.6f + player.stats.awareness * 0.8f) * (0.55f + 0.45f * breath);
+    float halfAngle = tfc::kVisionHalfAngleDeg * (PI / 180.0f) * (0.65f + 0.55f * breath);
 
     float dirX = std::sin(player.state.facingRadians);
     float dirZ = std::cos(player.state.facingRadians);
@@ -132,7 +133,9 @@ struct VisionHit
 VisionHit CheckVision(const tf::Player& viewer, const std::vector<tf::Player>& players, float rangeBase, float halfAngleRad)
 {
     VisionHit hit{};
-    float range = rangeBase * (0.6f + viewer.stats.awareness * 0.8f);
+    float breath = std::clamp(viewer.condition.breath, 0.0f, 1.0f);
+    float range = rangeBase * (0.6f + viewer.stats.awareness * 0.8f) * (0.55f + 0.45f * breath);
+    float halfAng = halfAngleRad * (0.65f + 0.55f * breath);
     float dirX = std::sin(viewer.state.facingRadians);
     float dirZ = std::cos(viewer.state.facingRadians);
 
@@ -149,7 +152,7 @@ VisionHit CheckVision(const tf::Player& viewer, const std::vector<tf::Player>& p
         float normZ = dz / dist;
         float dot = dirX * normX + dirZ * normZ;  // cos(theta)
         float ang = std::acos(std::clamp(dot, -1.0f, 1.0f));
-        if (ang <= halfAngleRad)
+        if (ang <= halfAng)
         {
             hit.hasHit = true;
             hit.playerId = p.id;
@@ -199,6 +202,8 @@ int main()
     std::uniform_real_distribution<float> awayX(tfc::kPitchLengthM * 0.55f, tfc::kPitchLengthM * 0.90f);
     std::uniform_real_distribution<float> jitter(-2.0f, 2.0f);
     std::array<float, 3> zSlots = {tfc::kPitchWidthM * 0.2f, tfc::kPitchWidthM * 0.5f, tfc::kPitchWidthM * 0.8f};
+    std::uniform_real_distribution<float> statMid(0.6f, 0.9f);
+    std::uniform_real_distribution<float> statWide(0.55f, 0.95f);
 
     auto makePlayer = [&](int id, int teamIndex, const char* name, float zBase) {
         tf::Player p;
@@ -208,8 +213,16 @@ int main()
         float z = std::clamp(zBase + jitter(world.rng), 4.0f, tfc::kPitchWidthM - 4.0f);
         p.state.position = {teamIndex == 0 ? homeX(world.rng) : awayX(world.rng), 0.0f, z};
         p.intent.targetPos = p.state.position;
-        p.stats.speed = 0.8f;
-        p.stats.accel = 0.8f;
+        p.stats.speed = statWide(world.rng);
+        p.stats.accel = statWide(world.rng);
+        p.stats.control = statMid(world.rng);
+        p.stats.passGround = statMid(world.rng);
+        p.stats.passLong = statMid(world.rng);
+        p.stats.shoot = statWide(world.rng);
+        p.stats.defend = statWide(world.rng);
+        p.stats.awareness = statMid(world.rng);
+        p.stats.composure = statMid(world.rng);
+        p.stats.endurance = statWide(world.rng);
         return p;
     };
 
@@ -351,11 +364,18 @@ int main()
         const float controlRadius = 0.7f; // meters
         if (world.ball.mode == tf::BallMode::Controlled)
         {
+            tf::Player* ownerPtr = nullptr;
+            float ownerBreath = 1.0f;
+            float ownerSpeed = 0.0f;
             for (auto& player : world.players)
             {
                 if (player.id == world.ball.ownerPlayerId)
                 {
                     player.state.hasBall = true;
+                    ownerPtr = &player;
+                    ownerBreath = std::clamp(player.condition.breath, 0.0f, 1.0f);
+                    ownerSpeed = std::sqrt(player.state.velocity.x * player.state.velocity.x +
+                                           player.state.velocity.z * player.state.velocity.z);
                     // Auto-kick on restart if pending.
                     if (restartKickPending && player.id == restartKickerId)
                     {
@@ -372,6 +392,7 @@ int main()
                             tf::BallKickGround(world.ball, player.id, player.teamIndex, tickCount, startPos, vel);
                             passBlockId = player.id;
                             passBlockUntil = tickCount + 30;
+                            player.condition.breath = std::min(1.0f, player.condition.breath + 0.15f); // catch breath after pass
                         }
                         restartKickPending = false;
                         restartKickerId = -1;
@@ -391,6 +412,7 @@ int main()
                             tf::BallKickGround(world.ball, player.id, player.teamIndex, tickCount, startPos, vel);
                             passBlockId = player.id;
                             passBlockUntil = tickCount + 30; // block kicker reclaim for 30 ticks (~0.5s)
+                            player.condition.breath = std::min(1.0f, player.condition.breath + 0.12f);
                         }
                     }
                     else if (player.intent.action == tf::RequestedAction::Shoot)
@@ -416,6 +438,24 @@ int main()
                     {
                         world.ball.pos = player.state.position;
                     }
+
+                    // Winded high-speed carriers can fumble forward.
+                    if (world.ball.mode == tf::BallMode::Controlled && world.ball.ownerPlayerId == player.id)
+                    {
+                        if (ownerSpeed > 6.0f && ownerBreath < 0.45f)
+                        {
+                            float dropProb = std::clamp((ownerSpeed - 6.0f) * 0.08f + (0.5f - ownerBreath) * 0.6f, 0.0f, 0.65f);
+                            if (stealChance(world.rng) < dropProb)
+                            {
+                                float ang = knockAngle(world.rng);
+                                tf::Vec3 vel{std::cos(ang) * 9.0f, 0.0f, std::sin(ang) * 9.0f};
+                                tf::Vec3 startPos{world.ball.pos.x + vel.x * 0.1f, 0.0f, world.ball.pos.z + vel.z * 0.1f};
+                                tf::BallKickGround(world.ball, player.id, player.teamIndex, tickCount, startPos, vel);
+                                world.ball.ownerPlayerId = -1;
+                                passBlockId = -1;
+                            }
+                        }
+                    }
                 }
             }
 
@@ -431,6 +471,14 @@ int main()
                     // Simple probabilistic steal/loose ball.
                     float dist = std::sqrt(dist2);
                     float stealProb = 0.7f + (1.2f - dist) * 0.3f; // up to 1.0
+                    if (ownerPtr)
+                    {
+                        stealProb *= (1.0f + (1.0f - std::clamp(ownerPtr->condition.breath, 0.0f, 1.0f)) * 0.6f);
+                        float ownerSpd = std::sqrt(ownerPtr->state.velocity.x * ownerPtr->state.velocity.x +
+                                                   ownerPtr->state.velocity.z * ownerPtr->state.velocity.z);
+                        if (ownerSpd > 6.0f) stealProb += 0.1f;
+                        stealProb = std::min(1.0f, stealProb);
+                    }
 
                     // Facing/touchline bias: if owner near touchline and defender facing outward, raise steal/throw-out chance.
                     float outwardX = 0.0f, outwardZ = 0.0f;

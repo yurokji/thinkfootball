@@ -24,12 +24,14 @@ struct PlayerStats
     float defend{0.5f};
     float awareness{0.5f};
     float composure{0.5f};
+    float endurance{0.5f};   // breath capacity: slows drain, speeds recovery
 };
 
 struct PlayerCondition
 {
     float fatigue{0.0f};
     float pressure01{0.0f};
+    float breath{1.0f};  // 0..1 snapshot of current breath/oxygen
 };
 
 enum class RequestedAction

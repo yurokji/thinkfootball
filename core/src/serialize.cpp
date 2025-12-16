@@ -81,10 +81,12 @@ std::string ToJson(const WorldState& world)
                              {"shoot", p.stats.shoot},
                              {"defend", p.stats.defend},
                              {"awareness", p.stats.awareness},
-                             {"composure", p.stats.composure}}},
+                             {"composure", p.stats.composure},
+                             {"endurance", p.stats.endurance}}},
                            {"condition",
                             {{"fatigue", p.condition.fatigue},
-                             {"pressure01", p.condition.pressure01}}},
+                             {"pressure01", p.condition.pressure01},
+                             {"breath", p.condition.breath}}},
                            {"intent",
                             {{"targetPos", p.intent.targetPos},
                              {"desiredSpeed01", p.intent.desiredSpeed01},
@@ -161,10 +163,12 @@ WorldState FromJson(const std::string& jsonStr)
         p.stats.defend = s.value("defend", 0.5f);
         p.stats.awareness = s.value("awareness", 0.5f);
         p.stats.composure = s.value("composure", 0.5f);
+        p.stats.endurance = s.value("endurance", 0.5f);
 
         auto c = jp["condition"];
         p.condition.fatigue = c.value("fatigue", 0.0f);
         p.condition.pressure01 = c.value("pressure01", 0.0f);
+        p.condition.breath = c.value("breath", 1.0f);
 
         auto it = jp["intent"];
         p.intent.targetPos = it["targetPos"].get<Vec3>();

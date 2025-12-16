@@ -31,8 +31,8 @@ Vec3 NormalizeXZ(const Vec3& v)
 void ApplySeparation(Player& self, const WorldState& world, float dt, float radius, float strength)
 {
     Vec3 push{0, 0, 0};
-    // Only apply mild separation to avoid "blocking" when trying to tackle.
-    float effectiveStrength = strength * 0.25f;  // further reduced
+    // Stronger separation to avoid clustering.
+    float effectiveStrength = strength * 0.8f;
     for (const Player& other : world.players)
     {
         if (&other == &self) continue;
@@ -45,6 +45,10 @@ void ApplySeparation(Player& self, const WorldState& world, float dt, float radi
             push.z += (delta.z / dist) * scale;
         }
     }
+    // Clamp push to avoid jitter explosions.
+    const float maxPush = 5.0f;
+    push.x = std::clamp(push.x, -maxPush, maxPush);
+    push.z = std::clamp(push.z, -maxPush, maxPush);
     self.state.velocity.x += push.x * effectiveStrength * dt;
     self.state.velocity.z += push.z * effectiveStrength * dt;
 }
@@ -52,6 +56,9 @@ void ApplySeparation(Player& self, const WorldState& world, float dt, float radi
 
 void MovementArcade::Tick(Player& player, const WorldState& world, float dtSeconds)
 {
+    float breath = std::clamp(player.condition.breath, 0.0f, 1.0f);
+    float endurance = std::clamp(player.stats.endurance, 0.1f, 1.0f);
+
     // Desired velocity toward target
     Vec3 toTarget{player.intent.targetPos.x - player.state.position.x,
                   0.0f,
@@ -64,8 +71,10 @@ void MovementArcade::Tick(Player& player, const WorldState& world, float dtSecon
     const float baseAccelMps2 = 6.5f;     // faster accel to turn quicker
     bool ownsBall = (world.ball.mode == BallMode::Controlled && world.ball.ownerPlayerId == player.id);
     float speedMult = ownsBall ? 0.5f : 1.30f;  // make on-ball slower, off-ball faster
-    float maxSpeed = player.stats.speed * baseMaxSpeedMps * speedMult;
-    float accel = player.stats.accel * baseAccelMps2;
+    float breathSpeedFactor = 0.55f + 0.45f * breath;   // winded players slow down
+    float breathAccelFactor = 0.65f + 0.35f * breath;   // and turn slower
+    float maxSpeed = player.stats.speed * baseMaxSpeedMps * speedMult * breathSpeedFactor;
+    float accel = player.stats.accel * baseAccelMps2 * breathAccelFactor;
     float desiredSpeed = player.intent.desiredSpeed01 * maxSpeed;
 
     // Ease into target to avoid instant stops.
@@ -105,6 +114,17 @@ void MovementArcade::Tick(Player& player, const WorldState& world, float dtSecon
     }
     player.state.velocity.x += delta.x;
     player.state.velocity.z += delta.z;
+
+    // Breath model: sprinting/bursting drains breath; coasting recovers it, scaled by endurance.
+    float appliedDelta = LengthXZ(delta);
+    float accelUse = std::min(1.0f, (maxDelta > 1e-5f) ? appliedDelta / maxDelta : 0.0f);
+    float sprintUse = std::clamp(desiredSpeed / std::max(maxSpeed, 1e-3f), 0.0f, 1.0f);
+    float exert = std::max(0.0f, sprintUse - 0.5f) * 1.4f + accelUse * 0.3f;  // bias drain to high sprint
+    if (ownsBall) exert *= 1.1f;  // carrying the ball is tiring
+    float drain = exert * (1.0f + (1.0f - endurance)) * dtSeconds * 0.9f;
+    float recover = (1.0f - sprintUse) * (0.6f + endurance * 0.8f) * dtSeconds * 0.6f;
+    breath = std::clamp(breath - drain + recover, 0.0f, 1.0f);
+    player.condition.breath = breath;
 
     // Separation
     ApplySeparation(player, world, dtSeconds, separationRadius, separationStrength);
