@@ -120,6 +120,7 @@ void DrawVisionCone(const tf::Player& player, const Vector2& origin, float scale
     Vector2 right = ToScreen({p.x + rightX * range, 0.0f, p.z + rightZ * range}, origin, scale);
 
     DrawTriangle(center, right, left, tfc::kVisionColor);
+    DrawTriangleLines(center, right, left, tfc::kVisionOutlineColor);
 }
 }  // namespace
 
