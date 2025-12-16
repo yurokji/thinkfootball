@@ -9,6 +9,7 @@
 
 #include "thinkfootball/types.h"
 #include "thinkfootball/ball_state.h"
+#include "thinkfootball/pitch_geom.h"
 
 namespace tf
 {
@@ -92,6 +93,7 @@ struct WorldState
 {
     MatchClock clock{};
     BallState ball{};
+    PitchGeometry pitch{};
     std::array<Team, 2> teams{};
     std::vector<Player> players{};
     std::uint64_t rngSeed{0};

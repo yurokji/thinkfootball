@@ -89,15 +89,16 @@ void BrainSimplePossession::Think(Player& player, const WorldState& world, const
     const bool ownsBall = (world.ball.mode == BallMode::Controlled && world.ball.ownerPlayerId == player.id);
 
     Vec3 target = ctx.ballPos;
+    Vec3 goalPos{(teamIndex == 0) ? ctx.pitchWidth : 0.0f, 0.0f, ctx.pitchHeight * 0.5f};
     RequestedAction action = RequestedAction::None;
     float speed01 = std::clamp(tctx.speedScale * tctx.pressScale, 0.0f, 1.0f);
 
     if (ownsBall)
     {
-        // Default dribble forward along attack direction.
-        const float attackDir = (teamIndex == 0) ? 1.0f : -1.0f;
+        // Default dribble forward along attack direction (x-axis: +x for team 0, -x for team 1).
+        const float attackDirX = (teamIndex == 0) ? 1.0f : -1.0f;
         target = player.state.position;
-        target.z += 8.0f * attackDir;  // advance 8m ahead
+        target.x += 8.0f * attackDirX;  // advance 8m ahead
 
         // Clamp within pitch bounds.
         target.x = std::clamp(target.x, 0.0f, ctx.pitchWidth);
@@ -105,38 +106,51 @@ void BrainSimplePossession::Think(Player& player, const WorldState& world, const
 
         speed01 = 0.7f;  // dribble slower than sprint
 
-        // Look for a simple pass to a teammate ahead and reasonably close.
-        int bestId = -1;
-        float bestScore = -1.0f;
-        Vec3 bestPos{};
+        // Shoot if close enough to goal.
+        float toGoalX = goalPos.x - player.state.position.x;
+        float toGoalZ = goalPos.z - player.state.position.z;
+        float goalDist2 = toGoalX * toGoalX + toGoalZ * toGoalZ;
+        if (goalDist2 < 20.0f * 20.0f)
+        {
+            action = RequestedAction::Shoot;
+            target = goalPos;
+            speed01 = 0.2f;  // preparing shot
+        }
+
+        // Look for a simple pass to a teammate reasonably close; favor only forward options.
+        int bestForwardId = -1;
+        float bestForwardScore = -1.0f;
+        Vec3 bestForwardPos{};
         for (const auto& mate : world.players)
         {
             if (mate.teamIndex != teamIndex || mate.id == player.id) continue;
             float dx = mate.state.position.x - player.state.position.x;
             float dz = mate.state.position.z - player.state.position.z;
             float dist2 = dx * dx + dz * dz;
-            if (dist2 < 4.0f) continue;       // too close
-            if (dist2 > 30.0f * 30.0f) continue;  // too far for this simple model
+            if (dist2 < 8.0f * 8.0f) continue;            // avoid very short passes
+            if (dist2 > 45.0f * 45.0f) continue;          // keep within moderate range
+            float dist = std::sqrt(dist2);
 
-            // Prefer forward (toward opponent goal) and centrality per tactics width.
-            float forward = (teamIndex == 0) ? dz : -dz;
-            if (forward <= 0.0f) continue;
+            // Prefer forward options only; skip if clearly backward.
+            float forward = (teamIndex == 0) ? dx : -dx;
+            if (forward <= 0.1f) continue;  // require some forward lead
+            float laneCenter = ctx.pitchHeight * 0.5f;
+            float widthPenalty = std::abs(mate.state.position.z - laneCenter) / (ctx.pitchHeight * 0.5f);
+            float score = (45.0f - dist) * 0.8f + forward * 0.4f - widthPenalty * 0.1f;
 
-            float laneCenter = ctx.pitchWidth * 0.5f;
-            float widthPenalty = std::abs(mate.state.position.x - laneCenter) / (ctx.pitchWidth * 0.5f);
-            float score = forward - widthPenalty * 3.0f;
-            if (score > bestScore)
+            if (forward > 0.5f && score > bestForwardScore)
             {
-                bestScore = score;
-                bestId = mate.id;
-                bestPos = mate.state.position;
+                bestForwardScore = score;
+                bestForwardId = mate.id;
+                bestForwardPos = mate.state.position;
             }
         }
 
-        if (bestId >= 0)
+        // Only pass if a forward option exists; otherwise keep dribbling.
+        if (bestForwardId >= 0 && action != RequestedAction::Shoot)
         {
             action = RequestedAction::Pass;
-            target = bestPos;
+            target = bestForwardPos;
             speed01 = 0.3f;  // slow down a bit while preparing pass
         }
     }
@@ -146,17 +160,17 @@ void BrainSimplePossession::Think(Player& player, const WorldState& world, const
         const float pressBand = ctx.pitchHeight * (0.05f + tactics.pressIntensity * 0.1f);
         if (teamIndex == 0)
         {
-            target.z = std::min(target.z, tctx.lineZ + pressBand);
+            target.x = std::min(target.x, tctx.lineZ + pressBand);
         }
         else
         {
-            target.z = std::max(target.z, tctx.lineZ - pressBand);
+            target.x = std::max(target.x, tctx.lineZ - pressBand);
         }
 
-        const float centerX = ctx.pitchWidth * 0.5f;
-        const float minX = centerX - tctx.halfWidth;
-        const float maxX = centerX + tctx.halfWidth;
-        target.x = std::clamp(target.x, minX, maxX);
+        const float centerZ = ctx.pitchHeight * 0.5f;
+        const float minZ = centerZ - tctx.halfWidth;
+        const float maxZ = centerZ + tctx.halfWidth;
+        target.z = std::clamp(target.z, minZ, maxZ);
 
         if (world.ball.mode == BallMode::Controlled)
         {

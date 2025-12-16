@@ -85,15 +85,9 @@ void MovementArcade::Tick(Player& player, const WorldState& world, float dtSecon
     // Do not allow movement backwards; scale speed by facing alignment.
     float forwardFactor = 1.0f;
     float angleToMove = WrapAngle(desiredHeading - player.state.facingRadians);
-    if (std::abs(angleToMove) > 3.14159265f * 0.5f)
-    {
-        forwardFactor = 0.0f;  // behind: stop until turned
-    }
-    else
-    {
-        forwardFactor = std::cos(angleToMove);  // 1 at 0 deg, 0 at 90 deg
-    }
-    desiredSpeed *= std::max(0.0f, forwardFactor);
+    forwardFactor = std::cos(angleToMove);  // 1 at 0 deg, 0 at 90 deg, negative if behind
+    // Allow some movement even when behind, but heavily damped.
+    desiredSpeed *= std::max(0.2f, forwardFactor);
 
     // Accelerate toward desired velocity
     Vec3 desiredVel{dir.x * desiredSpeed, 0.0f, dir.z * desiredSpeed};

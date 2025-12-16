@@ -16,7 +16,7 @@ struct MovementArcade : public MovementBase
 {
     float separationRadius{1.0f};
     float separationStrength{2.0f};
-    float turnRateRadPerSec{4.0f};  // how fast the player can rotate body
+    float turnRateRadPerSec{10.0f};  // how fast the player can rotate body
 
     void Tick(Player& player, const WorldState& world, float dtSeconds) override;
 };

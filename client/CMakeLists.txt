@@ -12,5 +12,6 @@ target_link_libraries(thinkfootball_client
 target_include_directories(thinkfootball_client
     PRIVATE
         ${CMAKE_SOURCE_DIR}/core/include
+        ${CMAKE_SOURCE_DIR}/client/include
         ${CMAKE_SOURCE_DIR}/third_party/raygui
 )
