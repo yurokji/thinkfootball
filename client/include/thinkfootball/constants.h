@@ -29,6 +29,8 @@ inline constexpr float kPlayerRadius = 12.0f;
 inline constexpr float kPlayerOutlineRadius = 14.0f;
 inline constexpr float kHeadingRadius = 10.0f;
 inline constexpr float kBallRadius = 6.0f;
+inline constexpr float kVisionRangeBase = 10.0f;      // meters
+inline constexpr float kVisionHalfAngleDeg = 40.0f * 0.5f;  // half-angle ~20deg default
 
 // Colors
 inline constexpr Color kPitchOuterColor{0, 80, 0, 255};
@@ -40,4 +42,5 @@ inline constexpr Color kHudTextColor{80, 80, 80, 255};
 inline constexpr Color kBallColor{255, 161, 0, 255}; // ORANGE
 inline constexpr Color kHomeColor{102, 191, 255, 255}; // SKYBLUE
 inline constexpr Color kAwayColor{230, 41, 55, 255};   // RED
+inline constexpr Color kVisionColor{255, 255, 0, 60};  // translucent yellow
 }  // namespace tfc

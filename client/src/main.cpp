@@ -95,6 +95,32 @@ void DrawHeading(const tf::Vec3& pos, float facingRadians, float radius, const V
 
     DrawTriangle(tip, right, left, color);
 }
+
+void DrawVisionCone(const tf::Player& player, const Vector2& origin, float scale)
+{
+    // Range scales modestly with awareness stat.
+    float range = tfc::kVisionRangeBase * (0.6f + player.stats.awareness * 0.8f);
+    float halfAngle = tfc::kVisionHalfAngleDeg * (PI / 180.0f);
+
+    float dirX = std::sin(player.state.facingRadians);
+    float dirZ = std::cos(player.state.facingRadians);
+
+    float s = std::sin(halfAngle);
+    float c = std::cos(halfAngle);
+
+    // Rotate direction by +-halfAngle for boundaries.
+    float leftX = dirX * c - dirZ * s;
+    float leftZ = dirX * s + dirZ * c;
+    float rightX = dirX * c + dirZ * s;
+    float rightZ = -dirX * s + dirZ * c;
+
+    tf::Vec3 p = player.state.position;
+    Vector2 center = ToScreen(p, origin, scale);
+    Vector2 left = ToScreen({p.x + leftX * range, 0.0f, p.z + leftZ * range}, origin, scale);
+    Vector2 right = ToScreen({p.x + rightX * range, 0.0f, p.z + rightZ * range}, origin, scale);
+
+    DrawTriangle(center, right, left, tfc::kVisionColor);
+}
 }  // namespace
 
 int main()
@@ -166,11 +192,13 @@ int main()
     int passBlockUntil = 0;
     int scoreHome = 0;
     int scoreAway = 0;
+    bool showVision = true;
 
     while (!WindowShouldClose())
     {
         tf::AdvanceClock(world, tfc::kTargetDt);
         ++tickCount;
+        if (IsKeyPressed(KEY_V)) showVision = !showVision;
 
         tf::GroupContext ctx;
         ctx.ballPos = world.ball.pos;
@@ -380,6 +408,7 @@ int main()
             Vector2 sp = ToScreen(player.state.position, pitchOrigin, scale);
             Color c = (player.teamIndex == 0) ? tfc::kHomeColor : tfc::kAwayColor;
             // Draw heading first (under the circle).
+            if (showVision) DrawVisionCone(player, pitchOrigin, scale);
             DrawHeading(player.state.position, player.state.facingRadians, tfc::kHeadingRadius, pitchOrigin, scale, tfc::kHeadingColor);
             DrawCircle((int)sp.x, (int)sp.y, tfc::kPlayerRadius, c);
             DrawCircleLines((int)sp.x, (int)sp.y, tfc::kPlayerOutlineRadius, tfc::kPlayerLabelColor);

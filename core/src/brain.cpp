@@ -92,6 +92,21 @@ void BrainSimplePossession::Think(Player& player, const WorldState& world, const
     Vec3 goalPos{(teamIndex == 0) ? ctx.pitchWidth : 0.0f, 0.0f, ctx.pitchHeight * 0.5f};
     RequestedAction action = RequestedAction::None;
     float speed01 = std::clamp(tctx.speedScale * tctx.pressScale, 0.0f, 1.0f);
+    // Slowdown when congested.
+    float nearestOppDist = 999.0f;
+    float nearestAllyDist = 999.0f;
+    for (const auto& other : world.players)
+    {
+        if (other.id == player.id) continue;
+        float dx = other.state.position.x - player.state.position.x;
+        float dz = other.state.position.z - player.state.position.z;
+        float d2 = dx * dx + dz * dz;
+        float d = std::sqrt(d2);
+        if (other.teamIndex == teamIndex)
+            nearestAllyDist = std::min(nearestAllyDist, d);
+        else
+            nearestOppDist = std::min(nearestOppDist, d);
+    }
 
     if (ownsBall)
     {

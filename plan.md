@@ -31,6 +31,15 @@ Scope: build a strategic, non-player-controlled football game where the player s
 - [x] Basic team tactics parameters (line height, press intensity, width, directness, tempo) stored in `TeamState`.
 - [x] Simple possession brain: chase when off-ball, dribble forward when on-ball, emit pass intents to nearby ahead teammates; central ball-claim/pass handling loop in client.
 
+#### M3.1 – Current Gameplay Loop (ad-hoc)
+- [x] Randomized 3v3 spawn per half, basic separation, heading indicators, clamp to pitch with resized render scale.
+- [x] Simple goal detection + scoreboard; ball reset on score.
+- [x] Pass/shot handling on client (ground kick, shooter/pass blocker to avoid instant reclaim).
+- [x] Forward-only pass heuristic + near-goal shooting trigger.
+- [ ] Add vision cone (beam) per player (~10m, stat-scaled), use to adjust dribble/pass targets; debug overlay toggle for vision cones.
+- [ ] Add perception (ray-cast/sector) to adjust dribble target and slow down near allies/opponents.
+- [ ] Collision/contact: on close approach lose ball or transfer ownership → set ball to FREE_GROUND with small knock-out velocity.
+
 ### M4 – Outcome Sampling (Events)
 - [ ] Ground pass model: intent target + error model (distance, passer passGround, pressure, fatigue) → actual landing, arrival time, bounce intensity.
 - [ ] Lob/cross model: similar error model using `passLong`; generate landing point + hang time profile → BallKickLob().
