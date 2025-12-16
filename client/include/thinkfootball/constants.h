@@ -29,8 +29,8 @@ inline constexpr float kPlayerRadius = 12.0f;
 inline constexpr float kPlayerOutlineRadius = 14.0f;
 inline constexpr float kHeadingRadius = 10.0f;
 inline constexpr float kBallRadius = 6.0f;
-inline constexpr float kVisionRangeBase = 12.0f;      // meters
-inline constexpr float kVisionHalfAngleDeg = 40.0f * 0.5f;  // half-angle ~20deg default
+inline constexpr float kVisionRangeBase = 20.0f;      // meters
+inline constexpr float kVisionHalfAngleDeg = 40.0f;   // half-angle ~40deg (full ~80deg)
 
 // Colors
 inline constexpr Color kPitchOuterColor{0, 80, 0, 255};

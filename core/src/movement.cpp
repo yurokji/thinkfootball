@@ -59,13 +59,13 @@ void MovementArcade::Tick(Player& player, const WorldState& world, float dtSecon
 
     // Human-like movement in meters/sec and meters/sec^2.
     const float baseMaxSpeedMps = 7.5f;   // ~elite sprint
-    const float baseAccelMps2 = 5.0f;     // modest accel to avoid warping
+    const float baseAccelMps2 = 6.5f;     // faster accel to turn quicker
     float maxSpeed = player.stats.speed * baseMaxSpeedMps;
     float accel = player.stats.accel * baseAccelMps2;
     float desiredSpeed = player.intent.desiredSpeed01 * maxSpeed;
 
     // Ease into target to avoid instant stops.
-    const float slowRadius = 5.0f;  // meters
+    const float slowRadius = 3.0f;  // meters
     if (dist < slowRadius && slowRadius > 1e-3f)
     {
         desiredSpeed *= (dist / slowRadius);

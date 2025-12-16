@@ -148,7 +148,7 @@ void BrainSimplePossession::Think(Player& player, const WorldState& world, const
     Vec3 goalPos{(teamIndex == 0) ? ctx.pitchWidth : 0.0f, 0.0f, ctx.pitchHeight * 0.5f};
     RequestedAction action = RequestedAction::None;
     float speed01 = std::clamp(tctx.speedScale * tctx.pressScale, 0.0f, 1.0f);
-    VisionInfo vision = CollectVision(player, world, 12.0f, 40.0f * 0.5f * (kPi / 180.0f));
+    VisionInfo vision = CollectVision(player, world, 20.0f, 40.0f * (kPi / 180.0f));
     if (ownsBall)
     {
         // Default dribble direction toward goal, then pick a safer variant.
@@ -160,17 +160,17 @@ void BrainSimplePossession::Think(Player& player, const WorldState& world, const
         target.x = std::clamp(target.x, 0.0f, ctx.pitchWidth);
         target.z = std::clamp(target.z, 0.0f, ctx.pitchHeight);
 
-        speed01 = 0.7f;  // dribble slower than sprint
+        speed01 = 0.9f;  // faster default dribble
 
         // Slow when threat is close in vision.
         if (vision.nearestOppDist < 3.5f)
         {
-            speed01 *= 0.5f;
+            speed01 *= 0.7f;
         }
 
         // Choose safer dribble direction among a few candidates with minimal turn.
-        float baseAng = 0.3f;  // ~17deg
-        float maxAng = 0.6f;   // ~34deg
+        float baseAng = 0.4f;  // ~23deg
+        float maxAng = 0.8f;   // ~46deg
         std::vector<Vec3> dirs = {
             fwdDir,
             RotateY(fwdDir, baseAng),
@@ -186,15 +186,44 @@ void BrainSimplePossession::Think(Player& player, const WorldState& world, const
             if (normLen < 1e-4f) continue;
             Vec3 nd{d.x / normLen, 0.0f, d.z / normLen};
             float angle = std::acos(std::clamp(nd.x * fwdDir.x + nd.z * fwdDir.z, -1.0f, 1.0f));
-            float anglePenalty = angle * (1.0f + (1.0f - player.stats.control));  // better control → smaller penalty
+            float anglePenalty = angle * (0.8f + (1.0f - player.stats.control) * 0.5f);  // lower weight → more willing to turn
 
             float threatPenalty = 0.0f;
-            if (vision.nearestOppDist < 8.0f)
+            if (vision.nearestOppDist < 10.0f)
             {
-                threatPenalty = (8.0f - vision.nearestOppDist);
+                threatPenalty += (10.0f - vision.nearestOppDist) * 2.0f;
+                // Penalize moving toward threat direction.
+                float toward = nd.x * vision.nearestOppVec.x + nd.z * vision.nearestOppVec.z;
+                if (toward > 0.0f)
+                {
+                    threatPenalty += toward * 8.0f;
+                }
             }
 
-            float score = (nd.x * fwdDir.x + nd.z * fwdDir.z) * 2.0f - anglePenalty * 1.0f - threatPenalty * 0.5f;
+            // Corridor (narrow gap) penalty: if two or more opponents are close to the path within 8m ahead
+            // and lateral clearance < 1m, heavily penalize to force turning away.
+            float corridorPenalty = 0.0f;
+            int closeCount = 0;
+            for (const auto& opp : world.players)
+            {
+                if (opp.teamIndex == teamIndex) continue;
+                float dx = opp.state.position.x - player.state.position.x;
+                float dz = opp.state.position.z - player.state.position.z;
+                float proj = dx * nd.x + dz * nd.z;
+                if (proj <= 0.0f || proj > 8.0f) continue;  // only look ahead up to 8m
+                float lateral = std::abs(dx * nd.z - dz * nd.x);
+                if (lateral < 2.5f)
+                {
+                    closeCount++;
+                    corridorPenalty += (2.5f - lateral) * 6.0f;
+                }
+            }
+            if (closeCount >= 2)
+            {
+                corridorPenalty *= 2.0f;  // tighten if multiple obstacles form a narrow channel
+            }
+
+            float score = (nd.x * fwdDir.x + nd.z * fwdDir.z) * 1.5f - anglePenalty - threatPenalty - corridorPenalty;
             if (score > bestScore)
             {
                 bestScore = score;
@@ -227,8 +256,8 @@ void BrainSimplePossession::Think(Player& player, const WorldState& world, const
             float dx = mate.state.position.x - player.state.position.x;
             float dz = mate.state.position.z - player.state.position.z;
             float dist2 = dx * dx + dz * dz;
-            if (dist2 < 8.0f * 8.0f) continue;            // avoid very short passes
-            if (dist2 > 45.0f * 45.0f) continue;          // keep within moderate range
+            if (dist2 < 3.0f * 3.0f) continue;            // avoid ultra short passes
+            if (dist2 > 50.0f * 50.0f) continue;          // allow a bit longer
             float dist = std::sqrt(dist2);
 
             float forward = (teamIndex == 0) ? dx : -dx;
@@ -238,8 +267,8 @@ void BrainSimplePossession::Think(Player& player, const WorldState& world, const
             float dirZ = std::cos(player.state.facingRadians);
             float dot = (dirX * dx + dirZ * dz) / std::max(dist, 1e-3f);
             float ang = std::acos(std::clamp(dot, -1.0f, 1.0f));
-            float halfAng = 40.0f * 0.5f * (kPi / 180.0f);
-            float visRange = 12.0f * (0.6f + player.stats.awareness * 0.8f);
+            float halfAng = 40.0f * (kPi / 180.0f);
+            float visRange = 20.0f * (0.6f + player.stats.awareness * 0.8f);
             if (ang > halfAng || dist > visRange) continue;
 
             float laneCenter = ctx.pitchHeight * 0.5f;
@@ -247,7 +276,7 @@ void BrainSimplePossession::Think(Player& player, const WorldState& world, const
             float score = (45.0f - dist) * 0.8f + forward * 0.4f - widthPenalty * 0.1f;
             if (forward <= 0.0f) score *= 0.75f;  // prefer forward, but allow back with penalty
 
-            if (forward > 0.5f && score > bestForwardScore)
+            if (forward > 0.3f && score > bestForwardScore)
             {
                 bestForwardScore = score;
                 bestForwardId = mate.id;

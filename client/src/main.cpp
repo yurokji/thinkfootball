@@ -216,6 +216,11 @@ int main()
     for (int i = 0; i < 3; ++i) world.players.push_back(makePlayer(i, 0, TextFormat("Home_%d", i + 1), zSlots[i]));
     for (int i = 0; i < 3; ++i) world.players.push_back(makePlayer(3 + i, 1, TextFormat("Away_%d", i + 1), zSlots[i]));
 
+    // Save initial positions for reset.
+    std::vector<tf::Vec3> initialPositions;
+    initialPositions.reserve(world.players.size());
+    for (const auto& p : world.players) initialPositions.push_back(p.state.position);
+
     // Give initial control to the rearmost home player.
     auto homeIt = std::min_element(world.players.begin(), world.players.end(), [](const tf::Player& a, const tf::Player& b) {
         if (a.teamIndex != b.teamIndex) return a.teamIndex < b.teamIndex;
@@ -350,13 +355,52 @@ int main()
         }
         if (scored)
         {
-            // Reset ball to center, free state
+            // Reset players to initial positions.
+            for (size_t i = 0; i < world.players.size() && i < initialPositions.size(); ++i)
+            {
+                world.players[i].state.position = initialPositions[i];
+                world.players[i].state.velocity = {0, 0, 0};
+                world.players[i].intent.targetPos = initialPositions[i];
+            }
+            // Determine conceding team: if home scored, away kicks off; vice versa.
+            int concedingTeam = (world.ball.pos.x <= 0.0f) ? 0 : 1;
+            // Ball to center.
             world.ball.pos = {world.pitch.length * 0.5f, 0.0f, world.pitch.width * 0.5f};
             world.ball.vel = {0, 0, 0};
             world.ball.ownerPlayerId = -1;
             world.ball.mode = tf::BallMode::FreeGround;
             passBlockId = -1;
             passBlockUntil = tickCount + 60;
+
+            // Find rearmost player of conceding team and give kickoff at center.
+            tf::Player* kicker = nullptr;
+            for (auto& p : world.players)
+            {
+                if (p.teamIndex != concedingTeam) continue;
+                if (!kicker || p.state.position.x < kicker->state.position.x) kicker = &p;
+            }
+            if (kicker)
+            {
+                kicker->state.position = world.ball.pos;
+                kicker->intent.targetPos = kicker->state.position;
+                tf::BallClaimControl(world.ball, kicker->id, kicker->teamIndex, tickCount, kicker->state.position);
+                // Set intent to pass to nearest teammate ahead.
+                float bestFwd = -1e9f;
+                tf::Vec3 bestPos = world.ball.pos;
+                for (auto& mate : world.players)
+                {
+                    if (mate.teamIndex != concedingTeam || mate.id == kicker->id) continue;
+                    float dx = mate.state.position.x - kicker->state.position.x;
+                    if ((concedingTeam == 0 && dx <= 0) || (concedingTeam == 1 && dx >= 0)) continue;
+                    if (dx > bestFwd)
+                    {
+                        bestFwd = dx;
+                        bestPos = mate.state.position;
+                    }
+                }
+                kicker->intent.targetPos = bestPos;
+                kicker->intent.action = tf::RequestedAction::Pass;
+            }
         }
         // Keep ball within touch/end lines.
         if (world.ball.pos.x < 0.0f)
