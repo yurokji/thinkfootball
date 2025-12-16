@@ -216,8 +216,15 @@ int main()
     for (int i = 0; i < 3; ++i) world.players.push_back(makePlayer(i, 0, TextFormat("Home_%d", i + 1), zSlots[i]));
     for (int i = 0; i < 3; ++i) world.players.push_back(makePlayer(3 + i, 1, TextFormat("Away_%d", i + 1), zSlots[i]));
 
-    // Give initial control to first home player.
-    tf::BallClaimControl(world.ball, world.players.front().id, world.players.front().teamIndex, 0, world.players.front().state.position);
+    // Give initial control to the rearmost home player.
+    auto homeIt = std::min_element(world.players.begin(), world.players.end(), [](const tf::Player& a, const tf::Player& b) {
+        if (a.teamIndex != b.teamIndex) return a.teamIndex < b.teamIndex;
+        return a.state.position.x < b.state.position.x;
+    });
+    if (homeIt != world.players.end() && homeIt->teamIndex == 0)
+    {
+        tf::BallClaimControl(world.ball, homeIt->id, homeIt->teamIndex, 0, homeIt->state.position);
+    }
 
     tf::MovementArcade moveController;
     moveController.separationRadius = 4.0f;    // meters
