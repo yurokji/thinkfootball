@@ -220,7 +220,7 @@ void BrainSimplePossession::Think(Player& player, const WorldState& world, const
             }
             if (closeCount >= 2)
             {
-                corridorPenalty *= 2.0f;  // tighten if multiple obstacles form a narrow channel
+                corridorPenalty *= 2.f;  // tighten if multiple obstacles form a narrow channel
             }
 
             float score = (nd.x * fwdDir.x + nd.z * fwdDir.z) * 1.5f - anglePenalty - threatPenalty - corridorPenalty;
