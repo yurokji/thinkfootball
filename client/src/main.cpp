@@ -5,6 +5,8 @@
 #include <iostream>
 #include <string>
 #include <vector>
+#include <algorithm>
+#include <cmath>
 
 #include "thinkfootball/brain.h"
 #include "thinkfootball/world_state.h"
@@ -16,11 +18,13 @@ constexpr int kGameHeight = 720;
 constexpr int kSidebarWidth = 360;
 constexpr int kWindowWidth = kGameWidth + kSidebarWidth;
 constexpr int kWindowHeight = 960;  // extra space for bottom panels
+constexpr float kPitchOffsetX = 16.0f;
+constexpr float kPitchOffsetY = 16.0f;
+constexpr float kPitchScreenMargin = 48.0f;  // keep pitch well inside the viewport
 constexpr float kTargetDt = 1.0f / 60.0f;
-constexpr float kPitchWidthM = 68.0f;   // meters (x-axis)
-constexpr float kPitchHeightM = 105.0f; // meters (z-axis)
-constexpr float kPixelsPerMeterX = kGameWidth / kPitchWidthM;
-constexpr float kPixelsPerMeterZ = kGameHeight / kPitchHeightM;
+// Use a landscape pitch: x axis ~length 105m, z axis ~width 68m.
+constexpr float kPitchWidthM = 105.0f;  // meters (x-axis, length)
+constexpr float kPitchHeightM = 68.0f;  // meters (z-axis, width)
 
 std::string ResolveFontPath()
 {
@@ -50,9 +54,56 @@ std::vector<int> BuildKoreanCodepoints()
     return cps;
 }
 
-Vector2 ToScreen(const tf::Vec3& p)
+Vector2 ToScreen(const tf::Vec3& p, const Vector2& origin, float scale)
 {
-    return {p.x * kPixelsPerMeterX, p.z * kPixelsPerMeterZ};
+    return {origin.x + p.x * scale, origin.y + p.z * scale};
+}
+
+tf::Vec3 ClampToPitch(const tf::Vec3& p)
+{
+    tf::Vec3 r = p;
+    r.x = std::clamp(r.x, 0.0f, kPitchWidthM);
+    r.z = std::clamp(r.z, 0.0f, kPitchHeightM);
+    return r;
+}
+
+void DrawHeading(const tf::Vec3& pos, float facingRadians, float radius, const Vector2& origin, float scale, Color color)
+{
+    Vector2 center = ToScreen(pos, origin, scale);
+
+    // Equilateral triangle anchored ahead of the circle, not centered on it.
+    float side = radius * 1.4f;
+    float height = std::sqrt(3.0f) * 0.5f * side;
+    float offset = radius + height * 0.25f;  // keep it tucked near the edge
+
+    // Define triangle in local space pointing "forward" (+z -> screen down).
+    Vector2 tipLocal{0.0f, offset + height};
+    Vector2 leftLocal{-side * 0.5f, offset};
+    Vector2 rightLocal{side * 0.5f, offset};
+
+    float s = std::sin(facingRadians);
+    float c = std::cos(facingRadians);
+    // Screen y grows downward; invert y for rotation to avoid left/right mirroring.
+    auto Rotate = [&](const Vector2& v) {
+        float ry = -v.y;
+        float rx = v.x;
+        float rx2 = rx * c - ry * s;
+        float ry2 = rx * s + ry * c;
+        return Vector2{rx2, -ry2};
+    };
+
+    Vector2 tip = Rotate(tipLocal);
+    Vector2 left = Rotate(leftLocal);
+    Vector2 right = Rotate(rightLocal);
+
+    tip.x += center.x;
+    tip.y += center.y;
+    left.x += center.x;
+    left.y += center.y;
+    right.x += center.x;
+    right.y += center.y;
+
+    DrawTriangle(tip, right, left, color);
 }
 }  // namespace
 
@@ -112,7 +163,7 @@ int main()
     world.players.push_back(p2);
 
     tf::MovementArcade moveController;
-    tf::BrainChaseBall brainChase;
+    tf::BrainSimplePossession brainSimple;
     tf::TeamBrain teamBrain;
     int tickCount = 0;
 
@@ -128,25 +179,49 @@ int main()
         teamBrain.ApplyTactics(world, ctx);
         for (auto& player : world.players)
         {
-            TickPlayerWithBrain(player, world, ctx, moveController, brainChase, kTargetDt);
+            TickPlayerWithBrain(player, world, ctx, moveController, brainSimple, kTargetDt);
+            player.state.position = ClampToPitch(player.state.position);
         }
 
-        // Simple ball pickup/follow logic.
+        // Reset hasBall flags.
+        for (auto& player : world.players) player.state.hasBall = false;
+
+        // Handle possession/pass actions.
         const float controlRadius = 0.7f; // meters
         if (world.ball.mode == tf::BallMode::Controlled)
         {
-            for (const auto& player : world.players)
+            for (auto& player : world.players)
             {
                 if (player.id == world.ball.ownerPlayerId)
                 {
-                    world.ball.pos = player.state.position;
+                    player.state.hasBall = true;
+                    if (player.intent.action == tf::RequestedAction::Pass)
+                    {
+                        tf::Vec3 target = ClampToPitch(player.intent.targetPos);
+                        tf::Vec3 dir{target.x - player.state.position.x, 0.0f, target.z - player.state.position.z};
+                        float len = std::sqrt(dir.x * dir.x + dir.z * dir.z);
+                        if (len > 1e-3f)
+                        {
+                            dir.x /= len;
+                            dir.z /= len;
+                            const float passSpeed = 18.0f; // m/s simple flat pass
+                            tf::Vec3 vel{dir.x * passSpeed, 0.0f, dir.z * passSpeed};
+                            tf::BallKickGround(world.ball, player.id, player.teamIndex, tickCount, player.state.position, vel);
+                        }
+                    }
+                    else
+                    {
+                        world.ball.pos = player.state.position;
+                    }
                     break;
                 }
             }
         }
-        else
+
+        // Claim control if free and close.
+        if (world.ball.mode != tf::BallMode::Controlled)
         {
-            for (const auto& player : world.players)
+            for (auto& player : world.players)
             {
                 float dx = player.state.position.x - world.ball.pos.x;
                 float dz = player.state.position.z - world.ball.pos.z;
@@ -154,36 +229,71 @@ int main()
                 if (dist2 <= controlRadius * controlRadius)
                 {
                     tf::BallClaimControl(world.ball, player.id, player.teamIndex, tickCount, player.state.position);
+                    player.state.hasBall = true;
                     break;
                 }
             }
         }
 
         tf::BallTick(world.ball, tickCount, kTargetDt);
+        // Keep ball within touch/end lines.
+        if (world.ball.pos.x < 0.0f)
+        {
+            world.ball.pos.x = 0.0f;
+            world.ball.vel.x = 0.0f;
+        }
+        else if (world.ball.pos.x > kPitchWidthM)
+        {
+            world.ball.pos.x = kPitchWidthM;
+            world.ball.vel.x = 0.0f;
+        }
+        if (world.ball.pos.z < 0.0f)
+        {
+            world.ball.pos.z = 0.0f;
+            world.ball.vel.z = 0.0f;
+        }
+        else if (world.ball.pos.z > kPitchHeightM)
+        {
+            world.ball.pos.z = kPitchHeightM;
+            world.ball.vel.z = 0.0f;
+        }
 
         BeginDrawing();
         ClearBackground(DARKGREEN);
 
         // Layout bounds
-        Rectangle gameArea = {0, 0, (float)kGameWidth, (float)kGameHeight};
-        Rectangle sidebarTop = {kGameWidth, 0, (float)kSidebarWidth, 480};
-        Rectangle sidebarBottom = {kGameWidth, sidebarTop.y + sidebarTop.height, (float)kSidebarWidth, (float)kWindowHeight - (sidebarTop.y + sidebarTop.height)};
-        Rectangle bottomBar = {0, (float)kGameHeight, (float)kGameWidth, (float)kWindowHeight - kGameHeight};
+        Rectangle gameArea = {kPitchOffsetX, kPitchOffsetY, (float)kGameWidth, (float)kGameHeight};
+        Rectangle sidebarTop = {gameArea.x + gameArea.width, kPitchOffsetY, (float)kSidebarWidth, 480};
+        Rectangle sidebarBottom = {sidebarTop.x, sidebarTop.y + sidebarTop.height, (float)kSidebarWidth, (float)kWindowHeight - (sidebarTop.y + sidebarTop.height)};
+        Rectangle bottomBar = {kPitchOffsetX, gameArea.y + gameArea.height, (float)kGameWidth, (float)kWindowHeight - (gameArea.y + gameArea.height)};
 
-        // Game area frame
-        DrawRectangleLines((int)gameArea.x + 20, (int)gameArea.y + 40, (int)gameArea.width - 40, (int)gameArea.height - 80, RAYWHITE);
+        // Compute pitch draw rect with preserved aspect ratio and generous margins.
+        float availW = kGameWidth - 2.0f * kPitchScreenMargin;
+        float availH = kGameHeight - 2.0f * kPitchScreenMargin;
+        float scale = std::min(availW / kPitchWidthM, availH / kPitchHeightM);
+        float pitchDrawW = kPitchWidthM * scale;
+        float pitchDrawH = kPitchHeightM * scale;
+        Vector2 pitchOrigin{gameArea.x + (kGameWidth - pitchDrawW) * 0.5f, gameArea.y + (kGameHeight - pitchDrawH) * 0.5f};
+        Rectangle pitchRect = {pitchOrigin.x, pitchOrigin.y, pitchDrawW, pitchDrawH};
+
+        // Game area and pitch
+        DrawRectangleRec(gameArea, Color{0, 80, 0, 255});
+        DrawRectangleRec(pitchRect, Color{0, 100, 0, 255});
+        DrawRectangleLinesEx(pitchRect, 3, RAYWHITE);
         // Players and ball
         for (const auto& player : world.players)
         {
-            Vector2 sp = ToScreen(player.state.position);
+            Vector2 sp = ToScreen(player.state.position, pitchOrigin, scale);
             Color c = (player.teamIndex == 0) ? SKYBLUE : RED;
-            DrawCircle((int)sp.x, (int)sp.y, 10.0f, c);
-            DrawCircleLines((int)sp.x, (int)sp.y, 12.0f, DARKGRAY);
-            Vector2 labelPos{sp.x - 16.0f, sp.y - 26.0f};
-            DrawTextEx(hudFont, player.name.c_str(), labelPos, 28.0f, 0.0f, DARKGRAY);
+            // Draw heading first (under the circle).
+            DrawHeading(player.state.position, player.state.facingRadians, 10.0f, pitchOrigin, scale, Fade(YELLOW, 0.9f));
+            DrawCircle((int)sp.x, (int)sp.y, 12.0f, c);
+            DrawCircleLines((int)sp.x, (int)sp.y, 14.0f, DARKGRAY);
+            Vector2 labelPos{sp.x - 16.0f, sp.y - 28.0f};
+            DrawTextEx(hudFont, player.name.c_str(), labelPos, 24.0f, 0.0f, DARKGRAY);
         }
         {
-            Vector2 bp = ToScreen(world.ball.pos);
+            Vector2 bp = ToScreen(world.ball.pos, pitchOrigin, scale);
             DrawCircle((int)bp.x, (int)bp.y, 6.0f, ORANGE);
         }
 

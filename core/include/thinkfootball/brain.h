@@ -41,6 +41,13 @@ struct BrainChaseBall : PlayerBrain
     void Think(Player& player, const WorldState& world, const GroupContext& ctx, float dtSeconds) override;
 };
 
+// Simple possession-aware brain: chase when off-ball, dribble forward when on-ball,
+// optionally pass to a teammate ahead.
+struct BrainSimplePossession : PlayerBrain
+{
+    void Think(Player& player, const WorldState& world, const GroupContext& ctx, float dtSeconds) override;
+};
+
 // Tick a player through brain -> movement pipeline.
 void TickPlayerWithBrain(Player& player,
                          const WorldState& world,

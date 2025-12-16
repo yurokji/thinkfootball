@@ -29,6 +29,7 @@ Scope: build a strategic, non-player-controlled football game where the player s
 - [x] Implement `PlayerBrain` / `TeamBrain` / `GroupContext` scaffolding; decouple decision (brain) from execution (movement).
 - [x] Player tick pipeline: `Brain -> Intent -> Movement -> State` respecting stats/condition constraints.
 - [x] Basic team tactics parameters (line height, press intensity, width, directness, tempo) stored in `TeamState`.
+- [x] Simple possession brain: chase when off-ball, dribble forward when on-ball, emit pass intents to nearby ahead teammates; central ball-claim/pass handling loop in client.
 
 ### M4 – Outcome Sampling (Events)
 - [ ] Ground pass model: intent target + error model (distance, passer passGround, pressure, fatigue) → actual landing, arrival time, bounce intensity.

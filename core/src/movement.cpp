@@ -12,6 +12,15 @@ float LengthXZ(const Vec3& v)
     return std::sqrt(v.x * v.x + v.z * v.z);
 }
 
+float WrapAngle(float a)
+{
+    const float pi = 3.1415926535f;
+    const float twoPi = pi * 2.0f;
+    while (a > pi) a -= twoPi;
+    while (a < -pi) a += twoPi;
+    return a;
+}
+
 Vec3 NormalizeXZ(const Vec3& v)
 {
     float len = LengthXZ(v);
@@ -62,6 +71,30 @@ void MovementArcade::Tick(Player& player, const WorldState& world, float dtSecon
         desiredSpeed *= (dist / slowRadius);
     }
 
+    // Turn body toward desired direction with limited turn rate.
+    float desiredHeading = player.state.facingRadians;
+    if (dist > 1e-3f)
+    {
+        desiredHeading = std::atan2(dir.x, dir.z);
+    }
+    float angleDiff = WrapAngle(desiredHeading - player.state.facingRadians);
+    float maxTurn = turnRateRadPerSec * dtSeconds;
+    float appliedTurn = std::clamp(angleDiff, -maxTurn, maxTurn);
+    player.state.facingRadians = WrapAngle(player.state.facingRadians + appliedTurn);
+
+    // Do not allow movement backwards; scale speed by facing alignment.
+    float forwardFactor = 1.0f;
+    float angleToMove = WrapAngle(desiredHeading - player.state.facingRadians);
+    if (std::abs(angleToMove) > 3.14159265f * 0.5f)
+    {
+        forwardFactor = 0.0f;  // behind: stop until turned
+    }
+    else
+    {
+        forwardFactor = std::cos(angleToMove);  // 1 at 0 deg, 0 at 90 deg
+    }
+    desiredSpeed *= std::max(0.0f, forwardFactor);
+
     // Accelerate toward desired velocity
     Vec3 desiredVel{dir.x * desiredSpeed, 0.0f, dir.z * desiredSpeed};
     Vec3 delta{desiredVel.x - player.state.velocity.x, 0.0f, desiredVel.z - player.state.velocity.z};
@@ -81,11 +114,5 @@ void MovementArcade::Tick(Player& player, const WorldState& world, float dtSecon
     // Integrate position
     player.state.position.x += player.state.velocity.x * dtSeconds;
     player.state.position.z += player.state.velocity.z * dtSeconds;
-
-    // Facing updates toward velocity if moving
-    if (LengthXZ(player.state.velocity) > 1e-3f)
-    {
-        player.state.facingRadians = std::atan2(player.state.velocity.x, player.state.velocity.z);
-    }
 }
 }  // namespace tf

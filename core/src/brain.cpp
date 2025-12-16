@@ -80,6 +80,108 @@ void BrainChaseBall::Think(Player& player, const WorldState& world, const GroupC
     player.intent.faceDir = {0, 0, 0};
 }
 
+void BrainSimplePossession::Think(Player& player, const WorldState& world, const GroupContext& ctx, float /*dtSeconds*/)
+{
+    const int teamIndex = std::clamp(player.teamIndex, 0, 1);
+    const auto& tactics = world.teams[teamIndex].tactics;
+    const auto& tctx = ctx.team[teamIndex];
+
+    const bool ownsBall = (world.ball.mode == BallMode::Controlled && world.ball.ownerPlayerId == player.id);
+
+    Vec3 target = ctx.ballPos;
+    RequestedAction action = RequestedAction::None;
+    float speed01 = std::clamp(tctx.speedScale * tctx.pressScale, 0.0f, 1.0f);
+
+    if (ownsBall)
+    {
+        // Default dribble forward along attack direction.
+        const float attackDir = (teamIndex == 0) ? 1.0f : -1.0f;
+        target = player.state.position;
+        target.z += 8.0f * attackDir;  // advance 8m ahead
+
+        // Clamp within pitch bounds.
+        target.x = std::clamp(target.x, 0.0f, ctx.pitchWidth);
+        target.z = std::clamp(target.z, 0.0f, ctx.pitchHeight);
+
+        speed01 = 0.7f;  // dribble slower than sprint
+
+        // Look for a simple pass to a teammate ahead and reasonably close.
+        int bestId = -1;
+        float bestScore = -1.0f;
+        Vec3 bestPos{};
+        for (const auto& mate : world.players)
+        {
+            if (mate.teamIndex != teamIndex || mate.id == player.id) continue;
+            float dx = mate.state.position.x - player.state.position.x;
+            float dz = mate.state.position.z - player.state.position.z;
+            float dist2 = dx * dx + dz * dz;
+            if (dist2 < 4.0f) continue;       // too close
+            if (dist2 > 30.0f * 30.0f) continue;  // too far for this simple model
+
+            // Prefer forward (toward opponent goal) and centrality per tactics width.
+            float forward = (teamIndex == 0) ? dz : -dz;
+            if (forward <= 0.0f) continue;
+
+            float laneCenter = ctx.pitchWidth * 0.5f;
+            float widthPenalty = std::abs(mate.state.position.x - laneCenter) / (ctx.pitchWidth * 0.5f);
+            float score = forward - widthPenalty * 3.0f;
+            if (score > bestScore)
+            {
+                bestScore = score;
+                bestId = mate.id;
+                bestPos = mate.state.position;
+            }
+        }
+
+        if (bestId >= 0)
+        {
+            action = RequestedAction::Pass;
+            target = bestPos;
+            speed01 = 0.3f;  // slow down a bit while preparing pass
+        }
+    }
+    else
+    {
+        // Chase-with-buffer as in BrainChaseBall.
+        const float pressBand = ctx.pitchHeight * (0.05f + tactics.pressIntensity * 0.1f);
+        if (teamIndex == 0)
+        {
+            target.z = std::min(target.z, tctx.lineZ + pressBand);
+        }
+        else
+        {
+            target.z = std::max(target.z, tctx.lineZ - pressBand);
+        }
+
+        const float centerX = ctx.pitchWidth * 0.5f;
+        const float minX = centerX - tctx.halfWidth;
+        const float maxX = centerX + tctx.halfWidth;
+        target.x = std::clamp(target.x, minX, maxX);
+
+        if (world.ball.mode == BallMode::Controlled)
+        {
+            const float buffer = 2.5f;
+            Vec3 toBall{target.x - player.state.position.x, 0.0f, target.z - player.state.position.z};
+            float dist = std::sqrt(toBall.x * toBall.x + toBall.z * toBall.z);
+            if (dist > buffer && dist > 1e-3f)
+            {
+                float scale = (dist - buffer) / dist;
+                target.x = player.state.position.x + toBall.x * scale;
+                target.z = player.state.position.z + toBall.z * scale;
+            }
+            else
+            {
+                target = player.state.position;
+            }
+        }
+    }
+
+    player.intent.targetPos = target;
+    player.intent.desiredSpeed01 = speed01;
+    player.intent.action = action;
+    player.intent.faceDir = {0, 0, 0};
+}
+
 void TickPlayerWithBrain(Player& player,
                          const WorldState& world,
                          const GroupContext& ctx,
