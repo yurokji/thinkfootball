@@ -122,6 +122,42 @@ void DrawVisionCone(const tf::Player& player, const Vector2& origin, float scale
     DrawTriangle(center, right, left, tfc::kVisionColor);
     DrawTriangleLines(center, right, left, tfc::kVisionOutlineColor);
 }
+
+struct VisionHit
+{
+    bool hasHit{false};
+    int playerId{-1};
+};
+
+VisionHit CheckVision(const tf::Player& viewer, const std::vector<tf::Player>& players, float rangeBase, float halfAngleRad)
+{
+    VisionHit hit{};
+    float range = rangeBase * (0.6f + viewer.stats.awareness * 0.8f);
+    float dirX = std::sin(viewer.state.facingRadians);
+    float dirZ = std::cos(viewer.state.facingRadians);
+
+    for (const auto& p : players)
+    {
+        if (p.id == viewer.id) continue;
+        float dx = p.state.position.x - viewer.state.position.x;
+        float dz = p.state.position.z - viewer.state.position.z;
+        float dist2 = dx * dx + dz * dz;
+        if (dist2 > range * range) continue;
+        float dist = std::sqrt(dist2);
+        if (dist < 1e-3f) continue;
+        float normX = dx / dist;
+        float normZ = dz / dist;
+        float dot = dirX * normX + dirZ * normZ;  // cos(theta)
+        float ang = std::acos(std::clamp(dot, -1.0f, 1.0f));
+        if (ang <= halfAngleRad)
+        {
+            hit.hasHit = true;
+            hit.playerId = p.id;
+            break;
+        }
+    }
+    return hit;
+}
 }  // namespace
 
 int main()
@@ -408,6 +444,21 @@ int main()
         {
             Vector2 sp = ToScreen(player.state.position, pitchOrigin, scale);
             Color c = (player.teamIndex == 0) ? tfc::kHomeColor : tfc::kAwayColor;
+            // Vision highlight: if this player is seen by the owner of the ball.
+            if (world.ball.mode == tf::BallMode::Controlled)
+            {
+                auto ownerIt = std::find_if(world.players.begin(), world.players.end(),
+                                            [&](const tf::Player& p) { return p.id == world.ball.ownerPlayerId; });
+                if (ownerIt != world.players.end() && ownerIt->id != player.id)
+                {
+                    VisionHit vh = CheckVision(*ownerIt, world.players, tfc::kVisionRangeBase, tfc::kVisionHalfAngleDeg * (PI / 180.0f));
+                    if (vh.hasHit && vh.playerId == player.id)
+                    {
+                        c = ColorAlpha(c, 0.8f);
+                        DrawCircleLines((int)sp.x, (int)sp.y, tfc::kPlayerOutlineRadius + 2.0f, tfc::kVisionOutlineColor);
+                    }
+                }
+            }
             // Draw heading first (under the circle).
             if (showVision) DrawVisionCone(player, pitchOrigin, scale);
             DrawHeading(player.state.position, player.state.facingRadians, tfc::kHeadingRadius, pitchOrigin, scale, tfc::kHeadingColor);
