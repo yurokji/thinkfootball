@@ -126,6 +126,31 @@ Vec3 BiasVectorFromBehavior(const ZoneBehavior& zb, bool attackPositiveX)
     return acc;
 }
 
+Vec3 AnchorForRole(const Player& p, float pitchLen, float pitchWid)
+{
+    float midZ = pitchWid * 0.5f;
+    auto mirrorX = [&](float x) { return pitchLen - x; };
+    auto anchor = [&](float x, float z) {
+        return (p.teamIndex == 0) ? Vec3{x, 0.0f, z} : Vec3{mirrorX(x), 0.0f, z};
+    };
+    if (p.role == "GK") return anchor(2.0f, midZ);
+    if (p.role == "LB") return anchor(16.0f, pitchWid * 0.2f);
+    if (p.role == "RB") return anchor(16.0f, pitchWid * 0.8f);
+    if (p.role == "CDF")
+    {
+        bool leftSide = (p.id % 2 == 0);
+        return anchor(12.0f, pitchWid * (leftSide ? 0.35f : 0.65f));
+    }
+    if (p.role == "CDM") return anchor(28.0f, pitchWid * 0.5f);
+    if (p.role == "LM") return anchor(32.0f, pitchWid * 0.2f);
+    if (p.role == "RM") return anchor(32.0f, pitchWid * 0.8f);
+    if (p.role == "CAM") return anchor(44.0f, pitchWid * 0.5f);
+    if (p.role == "LF") return anchor(60.0f, pitchWid * 0.42f);
+    if (p.role == "RF") return anchor(60.0f, pitchWid * 0.58f);
+    // 기본: 중앙 미드 위치
+    return anchor(40.0f, midZ);
+}
+
 // 패스 가능성: 거리 4~35m, 라인 안전, 패스 레인 여유(최소 간격).
 bool IsPassFeasible(const Player& passer, const Vec3& target, const WorldState& world, float pitchWidth, float pitchLength)
 {
@@ -661,6 +686,21 @@ void BrainSimplePossession::Think(Player& player, const WorldState& world, const
         const float minZ = centerZ - tctx.halfWidth;
         const float maxZ = centerZ + tctx.halfWidth;
         target.z = std::clamp(target.z, minZ, maxZ);
+
+        // 앵커/로밍 범위 블렌드로 뭉침 방지.
+        Vec3 anchor = AnchorForRole(player, ctx.pitchWidth, ctx.pitchHeight);
+        const float roamRadius = 10.0f;
+        target.x = 0.5f * target.x + 0.5f * anchor.x;
+        target.z = 0.5f * target.z + 0.5f * anchor.z;
+        Vec3 diff{target.x - anchor.x, 0.0f, target.z - anchor.z};
+        float dlen = Length2D(diff.x, diff.z);
+        if (dlen > roamRadius && dlen > 1e-3f)
+        {
+            diff.x *= (roamRadius / dlen);
+            diff.z *= (roamRadius / dlen);
+            target.x = anchor.x + diff.x;
+            target.z = anchor.z + diff.z;
+        }
     }
 
     player.intent.targetPos = target;
