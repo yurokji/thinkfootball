@@ -76,16 +76,17 @@ std::string ToJson(const WorldState& world)
                            {"role", p.role},
                            {"teamIndex", p.teamIndex},
                            {"stats",
-                           {{"speed", p.stats.speed},
-                            {"accel", p.stats.accel},
-                            {"control", p.stats.control},
-                            {"passGround", p.stats.passGround},
-                            {"passLong", p.stats.passLong},
-                            {"shoot", p.stats.shoot},
-                            {"defend", p.stats.defend},
-                            {"awareness", p.stats.awareness},
-                            {"composure", p.stats.composure},
+                            {{"speed", p.stats.speed},
+                             {"accel", p.stats.accel},
+                             {"control", p.stats.control},
+                             {"passGround", p.stats.passGround},
+                             {"passLong", p.stats.passLong},
+                             {"shoot", p.stats.shoot},
+                             {"defend", p.stats.defend},
+                             {"awareness", p.stats.awareness},
+                             {"composure", p.stats.composure},
                              {"endurance", p.stats.endurance},
+                             {"keeping", p.stats.keeping},
                              {"aggression", p.stats.aggression},
                              {"passPref", p.stats.passPref},
                              {"shootPref", p.stats.shootPref},
@@ -183,6 +184,7 @@ WorldState FromJson(const std::string& jsonStr)
         p.stats.awareness = s.value("awareness", 0.5f);
         p.stats.composure = s.value("composure", 0.5f);
         p.stats.endurance = s.value("endurance", 0.5f);
+        p.stats.keeping = s.value("keeping", 0.5f);
         p.stats.aggression = s.value("aggression", 0.5f);
         p.stats.passPref = s.value("passPref", 0.5f);
         p.stats.shootPref = s.value("shootPref", 0.5f);

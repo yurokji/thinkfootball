@@ -387,6 +387,7 @@ void BrainChaseBall::Think(Player& player, const WorldState& world, const GroupC
 void BrainSimplePossession::Think(Player& player, const WorldState& world, const GroupContext& ctx, float /*dtSeconds*/)
 {
     const int teamIndex = std::clamp(player.teamIndex, 0, 1);
+    const bool isGK = (player.role == "GK");
     const auto& tactics = world.teams[teamIndex].tactics;
     const auto& tctx = ctx.team[teamIndex];
     float breath = std::clamp(player.condition.breath, 0.0f, 1.0f);
@@ -557,12 +558,12 @@ void BrainSimplePossession::Think(Player& player, const WorldState& world, const
             g_dribbleHold[player.id] = DribbleHold{now + 0.25f, bestDir};
         }
 
-        // Shoot if close enough to goal.
+        // Shoot if close enough to goal (GK는 제외).
         float toGoalX = goalPos.x - player.state.position.x;
         float toGoalZ = goalPos.z - player.state.position.z;
         float goalDist2 = toGoalX * toGoalX + toGoalZ * toGoalZ;
         bool facingOpponentGoal = (teamIndex == 0) ? (toGoalX > 0.0f) : (toGoalX < 0.0f);
-        if (facingOpponentGoal && goalDist2 < 20.0f * 20.0f)
+        if (!isGK && facingOpponentGoal && goalDist2 < 20.0f * 20.0f)
         {
             action = RequestedAction::Shoot;
             target = goalPos;
@@ -625,6 +626,31 @@ void BrainSimplePossession::Think(Player& player, const WorldState& world, const
 
             // Winded players want to offload.
             score += (1.0f - breath) * 18.0f;
+
+            // Role-specific tendencies (natural style)
+            bool isCB = (player.role == "CDF");
+            bool isFB = (player.role == "LB" || player.role == "RB");
+            bool isWM = (player.role == "LM" || player.role == "RM");
+            bool isFW = (player.role == "LF" || player.role == "RF");
+            bool isAM = (player.role == "CAM");
+            if (isCB && dist > 15.0f)
+            {
+                score += 5.0f;  // CB 롱패스 선호
+                if (dist > 22.0f) score += 3.0f;
+            }
+            if ((isFB || isWM) && forward > 0.0f && dist > 10.0f)
+            {
+                score += 4.0f;  // 측면 전진 패스/크로스 성향
+            }
+            bool fwRelax = (vision.nearestOppDist > 9.0f);
+            if (isFW && fwRelax)
+            {
+                score *= 0.7f;  // 포워드는 드리블/슛 우선, 패스 점수 하향
+            }
+            if (isAM)
+            {
+                score += 3.0f;  // AM은 패스 성향 강화
+            }
 
             if (forward > 0.3f && score > bestForwardScore)
             {

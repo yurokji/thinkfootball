@@ -228,7 +228,7 @@ int main(int argc, char** argv)
     };
 
     auto makeStats = [&](float sp, float acc, float ctl, float pg, float pl, float sh, float def, float awr, float cmp, float endu,
-                         float agg, float pp, float shp, float dp, float hp) {
+                         float agg, float pp, float shp, float dp, float hp, float keep) {
         tf::PlayerStats s{};
         s.speed = sp;
         s.accel = acc;
@@ -245,21 +245,22 @@ int main(int argc, char** argv)
         s.shootPref = shp;
         s.dribblePref = dp;
         s.holdPref = hp;
+        s.keeping = keep;
         return s;
     };
 
     std::array<RoleSlot, 11> homeSlots = {
-        RoleSlot{"GK", 5.0f, tfc::kPitchWidthM * 0.5f, makeStats(0.55f, 0.55f, 0.55f, 0.45f, 0.45f, 0.35f, 0.8f, 0.7f, 0.7f, 0.8f, 0.2f, 0.7f, 0.05f, 0.2f, 0.8f)},
-        RoleSlot{"LB", 18.0f, tfc::kPitchWidthM * 0.18f, makeStats(0.75f, 0.75f, 0.65f, 0.6f, 0.55f, 0.45f, 0.75f, 0.65f, 0.65f, 0.8f, 0.55f, 0.55f, 0.1f, 0.35f, 0.4f)},
-        RoleSlot{"CDF", 15.0f, tfc::kPitchWidthM * 0.35f, makeStats(0.65f, 0.65f, 0.6f, 0.55f, 0.5f, 0.4f, 0.8f, 0.65f, 0.65f, 0.8f, 0.4f, 0.65f, 0.05f, 0.25f, 0.7f)},
-        RoleSlot{"CDF", 15.0f, tfc::kPitchWidthM * 0.65f, makeStats(0.65f, 0.65f, 0.6f, 0.55f, 0.5f, 0.4f, 0.8f, 0.65f, 0.65f, 0.8f, 0.4f, 0.65f, 0.05f, 0.25f, 0.7f)},
-        RoleSlot{"RB", 18.0f, tfc::kPitchWidthM * 0.82f, makeStats(0.75f, 0.75f, 0.65f, 0.6f, 0.55f, 0.45f, 0.75f, 0.65f, 0.65f, 0.8f, 0.55f, 0.55f, 0.1f, 0.35f, 0.4f)},
-        RoleSlot{"LM", 38.0f, tfc::kPitchWidthM * 0.18f, makeStats(0.8f, 0.8f, 0.7f, 0.7f, 0.6f, 0.6f, 0.55f, 0.7f, 0.65f, 0.85f, 0.6f, 0.55f, 0.2f, 0.45f, 0.35f)},
-        RoleSlot{"CDM", 35.0f, tfc::kPitchWidthM * 0.38f, makeStats(0.7f, 0.7f, 0.65f, 0.65f, 0.6f, 0.45f, 0.75f, 0.7f, 0.7f, 0.85f, 0.45f, 0.7f, 0.1f, 0.3f, 0.55f)},
-        RoleSlot{"CAM", 40.0f, tfc::kPitchWidthM * 0.62f, makeStats(0.75f, 0.75f, 0.7f, 0.7f, 0.65f, 0.65f, 0.55f, 0.75f, 0.7f, 0.85f, 0.6f, 0.65f, 0.35f, 0.45f, 0.35f)},
-        RoleSlot{"RM", 38.0f, tfc::kPitchWidthM * 0.82f, makeStats(0.8f, 0.8f, 0.7f, 0.7f, 0.6f, 0.6f, 0.55f, 0.7f, 0.65f, 0.85f, 0.6f, 0.55f, 0.2f, 0.45f, 0.35f)},
-        RoleSlot{"LF", 55.0f, tfc::kPitchWidthM * 0.42f, makeStats(0.82f, 0.82f, 0.7f, 0.68f, 0.65f, 0.78f, 0.5f, 0.65f, 0.7f, 0.85f, 0.75f, 0.45f, 0.55f, 0.5f, 0.25f)},
-        RoleSlot{"RF", 55.0f, tfc::kPitchWidthM * 0.58f, makeStats(0.82f, 0.82f, 0.7f, 0.68f, 0.65f, 0.78f, 0.5f, 0.65f, 0.7f, 0.85f, 0.75f, 0.45f, 0.55f, 0.5f, 0.25f)}};
+        RoleSlot{"GK", 5.0f, tfc::kPitchWidthM * 0.5f, makeStats(0.55f, 0.55f, 0.55f, 0.45f, 0.45f, 0.35f, 0.8f, 0.7f, 0.7f, 0.8f, 0.2f, 0.7f, 0.05f, 0.2f, 0.8f, 0.9f)},
+        RoleSlot{"LB", 18.0f, tfc::kPitchWidthM * 0.18f, makeStats(0.75f, 0.75f, 0.65f, 0.6f, 0.55f, 0.45f, 0.75f, 0.65f, 0.65f, 0.8f, 0.55f, 0.55f, 0.1f, 0.35f, 0.4f, 0.1f)},
+        RoleSlot{"CDF", 15.0f, tfc::kPitchWidthM * 0.35f, makeStats(0.65f, 0.65f, 0.6f, 0.55f, 0.5f, 0.4f, 0.8f, 0.65f, 0.65f, 0.8f, 0.4f, 0.65f, 0.05f, 0.25f, 0.7f, 0.15f)},
+        RoleSlot{"CDF", 15.0f, tfc::kPitchWidthM * 0.65f, makeStats(0.65f, 0.65f, 0.6f, 0.55f, 0.5f, 0.4f, 0.8f, 0.65f, 0.65f, 0.8f, 0.4f, 0.65f, 0.05f, 0.25f, 0.7f, 0.15f)},
+        RoleSlot{"RB", 18.0f, tfc::kPitchWidthM * 0.82f, makeStats(0.75f, 0.75f, 0.65f, 0.6f, 0.55f, 0.45f, 0.75f, 0.65f, 0.65f, 0.8f, 0.55f, 0.55f, 0.1f, 0.35f, 0.4f, 0.1f)},
+        RoleSlot{"LM", 38.0f, tfc::kPitchWidthM * 0.18f, makeStats(0.8f, 0.8f, 0.7f, 0.7f, 0.6f, 0.6f, 0.55f, 0.7f, 0.65f, 0.85f, 0.6f, 0.55f, 0.2f, 0.45f, 0.35f, 0.05f)},
+        RoleSlot{"CDM", 35.0f, tfc::kPitchWidthM * 0.38f, makeStats(0.7f, 0.7f, 0.65f, 0.65f, 0.6f, 0.45f, 0.75f, 0.7f, 0.7f, 0.85f, 0.45f, 0.7f, 0.1f, 0.3f, 0.55f, 0.05f)},
+        RoleSlot{"CAM", 40.0f, tfc::kPitchWidthM * 0.62f, makeStats(0.75f, 0.75f, 0.7f, 0.7f, 0.65f, 0.65f, 0.55f, 0.75f, 0.7f, 0.85f, 0.6f, 0.65f, 0.35f, 0.45f, 0.35f, 0.05f)},
+        RoleSlot{"RM", 38.0f, tfc::kPitchWidthM * 0.82f, makeStats(0.8f, 0.8f, 0.7f, 0.7f, 0.6f, 0.6f, 0.55f, 0.7f, 0.65f, 0.85f, 0.6f, 0.55f, 0.2f, 0.45f, 0.35f, 0.05f)},
+        RoleSlot{"LF", 55.0f, tfc::kPitchWidthM * 0.42f, makeStats(0.82f, 0.82f, 0.7f, 0.68f, 0.65f, 0.78f, 0.5f, 0.65f, 0.7f, 0.85f, 0.75f, 0.45f, 0.55f, 0.5f, 0.25f, 0.02f)},
+        RoleSlot{"RF", 55.0f, tfc::kPitchWidthM * 0.58f, makeStats(0.82f, 0.82f, 0.7f, 0.68f, 0.65f, 0.78f, 0.5f, 0.65f, 0.7f, 0.85f, 0.75f, 0.45f, 0.55f, 0.5f, 0.25f, 0.02f)}};
 
     auto mirrorX = [&](float x) { return tfc::kPitchLengthM - x; };
 

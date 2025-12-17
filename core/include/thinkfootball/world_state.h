@@ -25,6 +25,7 @@ struct PlayerStats
     float awareness{0.5f};
     float composure{0.5f};
     float endurance{0.5f};   // breath capacity: slows drain, speeds recovery
+    float keeping{0.5f};     // GK handling/interception skill
     // Behavioral tendencies (0..1): weigh decisions toward certain actions.
     float aggression{0.5f};
     float passPref{0.5f};
