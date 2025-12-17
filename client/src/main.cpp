@@ -196,38 +196,78 @@ int main()
     world.teams[1].name = "Away";
     world.teams[0].tactics = {0.55f, 0.55f, 0.75f, 0.5f, 0.6f};
     world.teams[1].tactics = {0.45f, 0.50f, 0.55f, 0.55f, 0.55f};
+    world.teams[0].formation = "4-4-2";
+    world.teams[1].formation = "4-4-2";
+    world.teams[0].style = "neutral";
+    world.teams[1].style = "neutral";
 
-    // Create random players (3 per team) within their halves, spread across width.
-    std::uniform_real_distribution<float> homeX(tfc::kPitchLengthM * 0.10f, tfc::kPitchLengthM * 0.45f);
-    std::uniform_real_distribution<float> awayX(tfc::kPitchLengthM * 0.55f, tfc::kPitchLengthM * 0.90f);
-    std::uniform_real_distribution<float> jitter(-2.0f, 2.0f);
-    std::array<float, 3> zSlots = {tfc::kPitchWidthM * 0.2f, tfc::kPitchWidthM * 0.5f, tfc::kPitchWidthM * 0.8f};
-    std::uniform_real_distribution<float> statMid(0.6f, 0.9f);
-    std::uniform_real_distribution<float> statWide(0.55f, 0.95f);
+    // 4-4-2 formation: predefined slots (meters, 0..length for x, 0..width for z).
+    struct RoleSlot
+    {
+        const char* name;
+        float x;
+        float z;
+        tf::PlayerStats stats;
+    };
 
-    auto makePlayer = [&](int id, int teamIndex, const char* name, float zBase) {
+    auto makeStats = [&](float sp, float acc, float ctl, float pg, float pl, float sh, float def, float awr, float cmp, float endu,
+                         float agg, float pp, float shp, float dp, float hp) {
+        tf::PlayerStats s{};
+        s.speed = sp;
+        s.accel = acc;
+        s.control = ctl;
+        s.passGround = pg;
+        s.passLong = pl;
+        s.shoot = sh;
+        s.defend = def;
+        s.awareness = awr;
+        s.composure = cmp;
+        s.endurance = endu;
+        s.aggression = agg;
+        s.passPref = pp;
+        s.shootPref = shp;
+        s.dribblePref = dp;
+        s.holdPref = hp;
+        return s;
+    };
+
+    std::array<RoleSlot, 11> homeSlots = {
+        RoleSlot{"GK", 5.0f, tfc::kPitchWidthM * 0.5f, makeStats(0.55f, 0.55f, 0.55f, 0.45f, 0.45f, 0.35f, 0.8f, 0.7f, 0.7f, 0.8f, 0.2f, 0.7f, 0.05f, 0.2f, 0.8f)},
+        RoleSlot{"LB", 18.0f, tfc::kPitchWidthM * 0.18f, makeStats(0.75f, 0.75f, 0.65f, 0.6f, 0.55f, 0.45f, 0.75f, 0.65f, 0.65f, 0.8f, 0.55f, 0.55f, 0.1f, 0.35f, 0.4f)},
+        RoleSlot{"CDF", 15.0f, tfc::kPitchWidthM * 0.35f, makeStats(0.65f, 0.65f, 0.6f, 0.55f, 0.5f, 0.4f, 0.8f, 0.65f, 0.65f, 0.8f, 0.4f, 0.65f, 0.05f, 0.25f, 0.7f)},
+        RoleSlot{"CDF", 15.0f, tfc::kPitchWidthM * 0.65f, makeStats(0.65f, 0.65f, 0.6f, 0.55f, 0.5f, 0.4f, 0.8f, 0.65f, 0.65f, 0.8f, 0.4f, 0.65f, 0.05f, 0.25f, 0.7f)},
+        RoleSlot{"RB", 18.0f, tfc::kPitchWidthM * 0.82f, makeStats(0.75f, 0.75f, 0.65f, 0.6f, 0.55f, 0.45f, 0.75f, 0.65f, 0.65f, 0.8f, 0.55f, 0.55f, 0.1f, 0.35f, 0.4f)},
+        RoleSlot{"LM", 38.0f, tfc::kPitchWidthM * 0.18f, makeStats(0.8f, 0.8f, 0.7f, 0.7f, 0.6f, 0.6f, 0.55f, 0.7f, 0.65f, 0.85f, 0.6f, 0.55f, 0.2f, 0.45f, 0.35f)},
+        RoleSlot{"CDM", 35.0f, tfc::kPitchWidthM * 0.38f, makeStats(0.7f, 0.7f, 0.65f, 0.65f, 0.6f, 0.45f, 0.75f, 0.7f, 0.7f, 0.85f, 0.45f, 0.7f, 0.1f, 0.3f, 0.55f)},
+        RoleSlot{"CAM", 40.0f, tfc::kPitchWidthM * 0.62f, makeStats(0.75f, 0.75f, 0.7f, 0.7f, 0.65f, 0.65f, 0.55f, 0.75f, 0.7f, 0.85f, 0.6f, 0.65f, 0.35f, 0.45f, 0.35f)},
+        RoleSlot{"RM", 38.0f, tfc::kPitchWidthM * 0.82f, makeStats(0.8f, 0.8f, 0.7f, 0.7f, 0.6f, 0.6f, 0.55f, 0.7f, 0.65f, 0.85f, 0.6f, 0.55f, 0.2f, 0.45f, 0.35f)},
+        RoleSlot{"LF", 55.0f, tfc::kPitchWidthM * 0.42f, makeStats(0.82f, 0.82f, 0.7f, 0.68f, 0.65f, 0.78f, 0.5f, 0.65f, 0.7f, 0.85f, 0.75f, 0.45f, 0.55f, 0.5f, 0.25f)},
+        RoleSlot{"RF", 55.0f, tfc::kPitchWidthM * 0.58f, makeStats(0.82f, 0.82f, 0.7f, 0.68f, 0.65f, 0.78f, 0.5f, 0.65f, 0.7f, 0.85f, 0.75f, 0.45f, 0.55f, 0.5f, 0.25f)}};
+
+    auto mirrorX = [&](float x) { return tfc::kPitchLengthM - x; };
+
+    auto makePlayer = [&](int id, int teamIndex, const RoleSlot& slot) {
         tf::Player p;
         p.id = id;
-        p.name = name;
+        p.name = TextFormat("%s_%s", teamIndex == 0 ? "Home" : "Away", slot.name);
+        p.role = slot.name;
         p.teamIndex = teamIndex;
-        float z = std::clamp(zBase + jitter(world.rng), 4.0f, tfc::kPitchWidthM - 4.0f);
-        p.state.position = {teamIndex == 0 ? homeX(world.rng) : awayX(world.rng), 0.0f, z};
+        p.state.position = {teamIndex == 0 ? slot.x : mirrorX(slot.x), 0.0f, slot.z};
         p.intent.targetPos = p.state.position;
-        p.stats.speed = statWide(world.rng);
-        p.stats.accel = statWide(world.rng);
-        p.stats.control = statMid(world.rng);
-        p.stats.passGround = statMid(world.rng);
-        p.stats.passLong = statMid(world.rng);
-        p.stats.shoot = statWide(world.rng);
-        p.stats.defend = statWide(world.rng);
-        p.stats.awareness = statMid(world.rng);
-        p.stats.composure = statMid(world.rng);
-        p.stats.endurance = statWide(world.rng);
+        p.stats = slot.stats;
         return p;
     };
 
-    for (int i = 0; i < 3; ++i) world.players.push_back(makePlayer(i, 0, TextFormat("Home_%d", i + 1), zSlots[i]));
-    for (int i = 0; i < 3; ++i) world.players.push_back(makePlayer(3 + i, 1, TextFormat("Away_%d", i + 1), zSlots[i]));
+    // Home roster
+    for (int i = 0; i < static_cast<int>(homeSlots.size()); ++i)
+    {
+        world.players.push_back(makePlayer(i, 0, homeSlots[i]));
+    }
+    // Away roster (mirror on X)
+    for (int i = 0; i < static_cast<int>(homeSlots.size()); ++i)
+    {
+        world.players.push_back(makePlayer(static_cast<int>(homeSlots.size()) + i, 1, homeSlots[i]));
+    }
 
     // Save initial positions for reset.
     std::vector<tf::Vec3> initialPositions;
@@ -271,6 +311,11 @@ int main()
     bool restartKickPending = false;
     tf::Vec3 restartKickTarget{};
     int restartKickerId = -1;
+    int restartNoTouchId = -1;   // kicker cannot retouch until someone else touches
+    bool restartUntouched = false;
+    auto IsDeadBall = [&]() {
+        return restartMode != RestartType::None || restartKickPending;
+    };
 
     while (!WindowShouldClose())
     {
@@ -283,8 +328,18 @@ int main()
         ctx.pitchWidth = tfc::kPitchLengthM;
         ctx.pitchHeight = tfc::kPitchWidthM;
         teamBrain.ApplyTactics(world, ctx);
+        bool deadBallPending = (restartMode != RestartType::None) || restartKickPending || restartUntouched;
         for (auto& player : world.players)
         {
+            if (deadBallPending && player.id != restartKickerId)
+            {
+                // Freeze everyone except the designated kicker during dead-ball phases.
+                player.intent.targetPos = player.state.position;
+                player.intent.desiredSpeed01 = 0.0f;
+                player.intent.action = tf::RequestedAction::None;
+                player.intent.faceDir = {0, 0, 0};
+                continue;
+            }
             TickPlayerWithBrain(player, world, ctx, moveController, brainSimple, tfc::kTargetDt);
             player.state.position = ClampToPitch(player.state.position);
         }
@@ -316,39 +371,103 @@ int main()
                         kicker = &p;
                     }
                 }
-                if (kicker)
-                {
+                    if (kicker)
+                    {
+                        // Spread players for corner setup to avoid clustering at the flag.
+                        bool isCorner = (restartMode == RestartType::Corner);
+                        if (isCorner)
+                        {
+                            bool leftCorner = restartSpot.z < world.pitch.width * 0.5f;
+                            float dir = (restartTeam == 0) ? 1.0f : -1.0f;
+                            float cx = restartSpot.x;
+                            float cz = restartSpot.z;
+                            auto clampInside = [&](tf::Vec3 v) {
+                                const float m = 2.0f;
+                                v.x = std::clamp(v.x, m, world.pitch.length - m);
+                                v.z = std::clamp(v.z, m, world.pitch.width - m);
+                                return v;
+                            };
+                            // Attackers: bring 4 players into attacking slots; rest hold formation.
+                            std::array<tf::Vec3, 4> atkSlots = {
+                                tf::Vec3{cx + dir * 4.0f, 0.0f, cz + (leftCorner ? 4.0f : -4.0f)},  // short
+                                tf::Vec3{cx + dir * 10.0f, 0.0f, world.pitch.width * 0.2f},          // near post
+                                tf::Vec3{cx + dir * 12.0f, 0.0f, world.pitch.width * 0.8f},          // far post
+                                tf::Vec3{cx + dir * 16.0f, 0.0f, world.pitch.width * 0.5f}           // central box
+                            };
+                            std::vector<int> atkIds;
+                            for (size_t i = 0; i < world.players.size(); ++i)
+                            {
+                                if (world.players[i].teamIndex == restartTeam && world.players[i].id != kicker->id)
+                                    atkIds.push_back(static_cast<int>(i));
+                            }
+                            for (size_t i = 0; i < atkIds.size(); ++i)
+                            {
+                                auto idx = atkIds[i];
+                                if (i < atkSlots.size())
+                                {
+                                    world.players[idx].state.position = clampInside(atkSlots[i]);
+                                }
+                                else
+                                {
+                                    world.players[idx].state.position = initialPositions[idx];
+                                }
+                                world.players[idx].intent.targetPos = world.players[idx].state.position;
+                            }
+                            // Defenders (opponent) stay in original formation to avoid piling in.
+                            for (size_t i = 0; i < world.players.size(); ++i)
+                            {
+                                if (world.players[i].teamIndex != restartTeam)
+                                {
+                                    world.players[i].state.position = initialPositions[i];
+                                    world.players[i].intent.targetPos = world.players[i].state.position;
+                                }
+                            }
+                        }
+
                     kicker->state.position = restartSpot;
                     kicker->intent.targetPos = restartSpot;
                     tf::BallClaimControl(world.ball, kicker->id, kicker->teamIndex, tickCount, kicker->state.position);
+                    restartNoTouchId = kicker->id;
+                    restartUntouched = true;
 
-                    // Simple restart pass target: farthest forward teammate, else clear into space toward opponent goal and center line.
-                    float bestFwd = (restartTeam == 0) ? -1e9f : 1e9f;
+                    // Simple restart target selection.
+                    float dir = (restartTeam == 0) ? 1.0f : -1.0f;
                     tf::Vec3 bestPos = restartSpot;
-                    for (auto& mate : world.players)
+                    if (isCorner)
                     {
-                        if (mate.teamIndex != restartTeam || mate.id == kicker->id) continue;
-                        if (restartTeam == 0)
-                        {
-                            if (mate.state.position.x > bestFwd)
-                            {
-                                bestFwd = mate.state.position.x;
-                                bestPos = mate.state.position;
-                            }
-                        }
-                        else
-                        {
-                            if (mate.state.position.x < bestFwd)
-                            {
-                                bestFwd = mate.state.position.x;
-                                bestPos = mate.state.position;
-                            }
-                        }
+                        // Aim into box regardless of teammate search to avoid dribbling the byline.
+                        float zBox = std::clamp(world.pitch.width * 0.5f, 10.0f, world.pitch.width - 10.0f);
+                        bestPos = {restartSpot.x + dir * 16.0f, 0.0f, zBox};
+                        bestPos.x = std::clamp(bestPos.x, 2.0f, world.pitch.length - 2.0f);
+                        bestPos.z = std::clamp(bestPos.z, 2.0f, world.pitch.width - 2.0f);
                     }
-                    if ((bestFwd == -1e9f && restartTeam == 0) || (bestFwd == 1e9f && restartTeam == 1))
+                    else
                     {
-                        float dir = (restartTeam == 0) ? 1.0f : -1.0f;
-                        bestPos = {restartSpot.x + dir * 15.0f, 0.0f, world.pitch.width * 0.5f};
+                        float bestFwd = (restartTeam == 0) ? -1e9f : 1e9f;
+                        for (auto& mate : world.players)
+                        {
+                            if (mate.teamIndex != restartTeam || mate.id == kicker->id) continue;
+                            if (restartTeam == 0)
+                            {
+                                if (mate.state.position.x > bestFwd)
+                                {
+                                    bestFwd = mate.state.position.x;
+                                    bestPos = mate.state.position;
+                                }
+                            }
+                            else
+                            {
+                                if (mate.state.position.x < bestFwd)
+                                {
+                                    bestFwd = mate.state.position.x;
+                                    bestPos = mate.state.position;
+                                }
+                            }
+                        }
+                        if ((bestFwd == -1e9f && restartTeam == 0) || (bestFwd == 1e9f && restartTeam == 1))
+                        {
+                            bestPos = {restartSpot.x + dir * 15.0f, 0.0f, world.pitch.width * 0.5f};
+                        }
                     }
                     kicker->intent.targetPos = bestPos;
                     kicker->intent.action = tf::RequestedAction::Pass;
@@ -367,10 +486,16 @@ int main()
             tf::Player* ownerPtr = nullptr;
             float ownerBreath = 1.0f;
             float ownerSpeed = 0.0f;
+            bool deadBall = IsDeadBall();
             for (auto& player : world.players)
             {
                 if (player.id == world.ball.ownerPlayerId)
                 {
+                    if (restartUntouched && player.id == restartNoTouchId)
+                    {
+                        // Illegal retouch during dead-ball; ignore possession and continue.
+                        continue;
+                    }
                     player.state.hasBall = true;
                     ownerPtr = &player;
                     ownerBreath = std::clamp(player.condition.breath, 0.0f, 1.0f);
@@ -394,6 +519,16 @@ int main()
                             passBlockUntil = tickCount + 30;
                             player.condition.breath = std::min(1.0f, player.condition.breath + 0.15f); // catch breath after pass
                         }
+                        else
+                        {
+                            // If target is extremely close, force a nudge forward to avoid dribble.
+                            float dirSign = (player.teamIndex == 0) ? 1.0f : -1.0f;
+                            tf::Vec3 vel{dirSign * 12.0f, 0.0f, 0.0f};
+                            tf::Vec3 startPos{player.state.position.x + dirSign * 0.5f, 0.0f, player.state.position.z};
+                            tf::BallKickGround(world.ball, player.id, player.teamIndex, tickCount, startPos, vel);
+                            passBlockId = player.id;
+                            passBlockUntil = tickCount + 30;
+                        }
                         restartKickPending = false;
                         restartKickerId = -1;
                     }
@@ -404,19 +539,22 @@ int main()
                         // Re-validate pass target: must have a teammate near the intended spot.
                         int mateId = -1;
                         float bestD2 = 25.0f; // within 5m
-                        for (const auto& mate : world.players)
+                        if (!deadBall)
                         {
-                            if (mate.teamIndex != player.teamIndex || mate.id == player.id) continue;
-                            float dx = mate.state.position.x - target.x;
-                            float dz = mate.state.position.z - target.z;
-                            float d2 = dx * dx + dz * dz;
-                            if (d2 < bestD2)
+                            for (const auto& mate : world.players)
                             {
-                                bestD2 = d2;
-                                mateId = mate.id;
+                                if (mate.teamIndex != player.teamIndex || mate.id == player.id) continue;
+                                float dx = mate.state.position.x - target.x;
+                                float dz = mate.state.position.z - target.z;
+                                float d2 = dx * dx + dz * dz;
+                                if (d2 < bestD2)
+                                {
+                                    bestD2 = d2;
+                                    mateId = mate.id;
+                                }
                             }
                         }
-                        if (mateId == -1) {
+                        if (mateId == -1 && !deadBall) {
                             // No valid receiver nearby; keep dribbling.
                             player.intent.action = tf::RequestedAction::None;
                             target = player.state.position;
@@ -435,6 +573,16 @@ int main()
                             passBlockId = player.id;
                             passBlockUntil = tickCount + 30; // block kicker reclaim for 30 ticks (~0.5s)
                             player.condition.breath = std::min(1.0f, player.condition.breath + 0.12f);
+                        }
+                        else if (deadBall)
+                        {
+                            // Force a short restart tap if target is extremely close.
+                            float dirSign = (player.teamIndex == 0) ? 1.0f : -1.0f;
+                            tf::Vec3 vel{dirSign * 10.0f, 0.0f, 0.0f};
+                            tf::Vec3 startPos{player.state.position.x + dirSign * 0.5f, 0.0f, player.state.position.z};
+                            tf::BallKickGround(world.ball, player.id, player.teamIndex, tickCount, startPos, vel);
+                            passBlockId = player.id;
+                            passBlockUntil = tickCount + 30;
                         }
                     }
                     else if (player.intent.action == tf::RequestedAction::Shoot)
@@ -458,7 +606,10 @@ int main()
                     }
                     else
                     {
-                        world.ball.pos = player.state.position;
+                        if (!deadBall)
+                        {
+                            world.ball.pos = player.state.position;
+                        }
                     }
 
                     // Winded high-speed carriers can fumble forward.
@@ -536,9 +687,9 @@ int main()
                         passBlockId = player.id;
                         passBlockUntil = tickCount + 30;
                     }
-                    else
-                    {
-                        // Loose ball knock out
+                        else
+                        {
+                            // Loose ball knock out
                         float ang = knockAngle(world.rng);
                         if (outwardZ != 0.0f) ang = (outwardZ < 0) ? -PI * 0.5f : PI * 0.5f;
                         tf::Vec3 vel{std::cos(ang) * 10.0f, 0.0f, std::sin(ang) * 10.0f};
@@ -557,6 +708,7 @@ int main()
         {
             for (auto& player : world.players)
             {
+                if (restartUntouched && player.id == restartNoTouchId) continue; // kicker cannot retouch before others
                 if (passBlockId == player.id && tickCount < passBlockUntil) continue;
                 float dx = player.state.position.x - world.ball.pos.x;
                 float dz = player.state.position.z - world.ball.pos.z;
@@ -571,6 +723,12 @@ int main()
         }
 
         tf::BallTick(world.ball, tickCount, tfc::kTargetDt);
+        // Clear dead-ball retouch guard once someone else touches.
+        if (restartUntouched && world.ball.lastTouch.playerId != restartNoTouchId && world.ball.lastTouch.playerId != -1)
+        {
+            restartUntouched = false;
+            restartNoTouchId = -1;
+        }
         // Out-of-play handling: goal/goal-kick/corner/throw-in.
         bool oobEndline = (world.ball.pos.x < 0.0f) || (world.ball.pos.x > world.pitch.length);
         bool oobSideline = (world.ball.pos.z < 0.0f) || (world.ball.pos.z > world.pitch.width);
@@ -792,8 +950,9 @@ int main()
             DrawHeading(player.state.position, player.state.facingRadians, tfc::kHeadingRadius, pitchOrigin, scale, tfc::kHeadingColor);
             DrawCircle((int)sp.x, (int)sp.y, tfc::kPlayerRadius, c);
             DrawCircleLines((int)sp.x, (int)sp.y, tfc::kPlayerOutlineRadius, tfc::kPlayerLabelColor);
-            Vector2 labelPos{sp.x - 16.0f, sp.y - 28.0f};
-            DrawTextEx(hudFont, player.name.c_str(), labelPos, (float)tfc::kPlayerLabelSize, 0.0f, tfc::kPlayerLabelColor);
+            const char* label = player.role.empty() ? player.name.c_str() : player.role.c_str();
+            Vector2 labelPos{sp.x - 12.0f, sp.y - 30.0f};
+            DrawTextEx(hudFont, label, labelPos, (float)tfc::kPlayerLabelSize, 0.0f, tfc::kPlayerLabelColor);
         }
         {
             Vector2 bp = ToScreen(world.ball.pos, pitchOrigin, scale);

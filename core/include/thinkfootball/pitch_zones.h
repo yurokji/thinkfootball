@@ -67,6 +67,7 @@ inline Zone IndexToZone(int index)
 ZoneRect GetZoneRect(const PitchLayout& layout, Lane lane, Band band);
 
 // Find base zone index for a given XZ position.
+// Supports both center-origin coordinates ([-L/2, +L/2]) and 0-origin ([0, L]).
 int GetZoneAtPosition(const PitchLayout& layout, const Vec3& pos);
 
 // Named special zones.

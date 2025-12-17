@@ -5,6 +5,7 @@ add_library(thinkfootball_core STATIC
     src/movement.cpp
     src/ball_state.cpp
     src/brain.cpp
+    src/zone_behavior.cpp
 )
 
 target_include_directories(thinkfootball_core

@@ -62,7 +62,9 @@ std::string ToJson(const WorldState& world)
                            {"pressIntensity", t.tactics.pressIntensity},
                            {"width", t.tactics.width},
                            {"directness", t.tactics.directness},
-                           {"tempo", t.tactics.tempo}}}});
+                           {"tempo", t.tactics.tempo}}},
+                         {"formation", t.formation},
+                         {"style", t.style}});
     }
     j["teams"] = teams;
 
@@ -71,22 +73,28 @@ std::string ToJson(const WorldState& world)
     {
         players.push_back({{"id", p.id},
                            {"name", p.name},
+                           {"role", p.role},
                            {"teamIndex", p.teamIndex},
                            {"stats",
-                            {{"speed", p.stats.speed},
-                             {"accel", p.stats.accel},
-                             {"control", p.stats.control},
-                             {"passGround", p.stats.passGround},
-                             {"passLong", p.stats.passLong},
-                             {"shoot", p.stats.shoot},
-                             {"defend", p.stats.defend},
-                             {"awareness", p.stats.awareness},
-                             {"composure", p.stats.composure},
-                             {"endurance", p.stats.endurance}}},
-                           {"condition",
-                            {{"fatigue", p.condition.fatigue},
-                             {"pressure01", p.condition.pressure01},
-                             {"breath", p.condition.breath}}},
+                           {{"speed", p.stats.speed},
+                            {"accel", p.stats.accel},
+                            {"control", p.stats.control},
+                            {"passGround", p.stats.passGround},
+                            {"passLong", p.stats.passLong},
+                            {"shoot", p.stats.shoot},
+                            {"defend", p.stats.defend},
+                            {"awareness", p.stats.awareness},
+                            {"composure", p.stats.composure},
+                             {"endurance", p.stats.endurance},
+                             {"aggression", p.stats.aggression},
+                             {"passPref", p.stats.passPref},
+                             {"shootPref", p.stats.shootPref},
+                             {"dribblePref", p.stats.dribblePref},
+                             {"holdPref", p.stats.holdPref}}},
+                          {"condition",
+                           {{"fatigue", p.condition.fatigue},
+                            {"pressure01", p.condition.pressure01},
+                            {"breath", p.condition.breath}}},
                            {"intent",
                             {{"targetPos", p.intent.targetPos},
                              {"desiredSpeed01", p.intent.desiredSpeed01},
@@ -96,7 +104,10 @@ std::string ToJson(const WorldState& world)
                             {{"position", p.state.position},
                              {"velocity", p.state.velocity},
                              {"facingRadians", p.state.facingRadians},
-                             {"hasBall", p.state.hasBall}}}});
+                             {"hasBall", p.state.hasBall},
+                             {"nextDecisionTime", p.state.nextDecisionTime},
+                             {"cachedTarget", p.state.cachedTarget},
+                             {"cachedAction", static_cast<int>(p.state.cachedAction)}}}});
     }
     j["players"] = players;
     j["rngSeed"] = world.rngSeed;
@@ -144,6 +155,8 @@ WorldState FromJson(const std::string& jsonStr)
         world.teams[i].tactics.width = t.value("width", 0.5f);
         world.teams[i].tactics.directness = t.value("directness", 0.5f);
         world.teams[i].tactics.tempo = t.value("tempo", 0.5f);
+        world.teams[i].formation = teams[i].value("formation", std::string("4-4-2"));
+        world.teams[i].style = teams[i].value("style", std::string("neutral"));
     }
 
     world.players.clear();
@@ -152,6 +165,7 @@ WorldState FromJson(const std::string& jsonStr)
         Player p;
         p.id = jp.value("id", 0);
         p.name = jp.value("name", "");
+        p.role = jp.value("role", "");
         p.teamIndex = jp.value("teamIndex", 0);
         auto s = jp["stats"];
         p.stats.speed = s.value("speed", 0.5f);
@@ -164,6 +178,11 @@ WorldState FromJson(const std::string& jsonStr)
         p.stats.awareness = s.value("awareness", 0.5f);
         p.stats.composure = s.value("composure", 0.5f);
         p.stats.endurance = s.value("endurance", 0.5f);
+        p.stats.aggression = s.value("aggression", 0.5f);
+        p.stats.passPref = s.value("passPref", 0.5f);
+        p.stats.shootPref = s.value("shootPref", 0.5f);
+        p.stats.dribblePref = s.value("dribblePref", 0.5f);
+        p.stats.holdPref = s.value("holdPref", 0.5f);
 
         auto c = jp["condition"];
         p.condition.fatigue = c.value("fatigue", 0.0f);
@@ -181,6 +200,9 @@ WorldState FromJson(const std::string& jsonStr)
         p.state.velocity = st["velocity"].get<Vec3>();
         p.state.facingRadians = st.value("facingRadians", 0.0f);
         p.state.hasBall = st.value("hasBall", false);
+        p.state.nextDecisionTime = st.value("nextDecisionTime", 0.0f);
+        p.state.cachedTarget = st.value("cachedTarget", Vec3{});
+        p.state.cachedAction = static_cast<RequestedAction>(st.value("cachedAction", 0));
 
         world.players.push_back(p);
     }

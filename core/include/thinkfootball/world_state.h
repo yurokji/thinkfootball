@@ -25,6 +25,12 @@ struct PlayerStats
     float awareness{0.5f};
     float composure{0.5f};
     float endurance{0.5f};   // breath capacity: slows drain, speeds recovery
+    // Behavioral tendencies (0..1): weigh decisions toward certain actions.
+    float aggression{0.5f};
+    float passPref{0.5f};
+    float shootPref{0.5f};
+    float dribblePref{0.5f};
+    float holdPref{0.5f};
 };
 
 struct PlayerCondition
@@ -57,12 +63,18 @@ struct PlayerState
     Vec3 velocity{};
     float facingRadians{0.0f};
     bool hasBall{false};
+
+    // Decision cache to reduce jitter.
+    float nextDecisionTime{0.0f};
+    Vec3 cachedTarget{};
+    RequestedAction cachedAction{RequestedAction::None};
 };
 
 struct Player
 {
     int id{0};
     std::string name{};
+    std::string role{};  // short position label (e.g., LB, CAM)
     int teamIndex{0};
     PlayerStats stats{};
     PlayerCondition condition{};
@@ -83,6 +95,8 @@ struct Team
 {
     std::string name{};
     TeamTactics tactics{};
+    std::string formation{"4-4-2"};
+    std::string style{"neutral"};
 };
 
 struct MatchClock

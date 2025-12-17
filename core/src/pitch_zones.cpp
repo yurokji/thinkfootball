@@ -20,8 +20,15 @@ int GetZoneAtPosition(const PitchLayout& layout, const Vec3& pos)
     float laneWidth = layout.pitchWidth / static_cast<float>(Lane::Count);
     float bandHeight = layout.pitchHeight / static_cast<float>(Band::Count);
 
-    int laneIdx = static_cast<int>((pos.x + layout.pitchWidth * 0.5f) / laneWidth);
-    int bandIdx = static_cast<int>((pos.z + layout.pitchHeight * 0.5f) / bandHeight);
+    // Detect whether coordinates are centered or origin at 0.
+    bool originZero = (pos.x >= 0.0f && pos.x <= layout.pitchWidth &&
+                       pos.z >= 0.0f && pos.z <= layout.pitchHeight);
+
+    float px = originZero ? pos.x : (pos.x + layout.pitchWidth * 0.5f);
+    float pz = originZero ? pos.z : (pos.z + layout.pitchHeight * 0.5f);
+
+    int laneIdx = static_cast<int>(px / laneWidth);
+    int bandIdx = static_cast<int>(pz / bandHeight);
 
     if (laneIdx < 0 || laneIdx >= static_cast<int>(Lane::Count) ||
         bandIdx < 0 || bandIdx >= static_cast<int>(Band::Count))

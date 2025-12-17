@@ -80,6 +80,13 @@ struct DribbleHold
 };
 
 static std::unordered_map<int, DribbleHold> g_dribbleHold;
+
+struct DecisionCache
+{
+    float nextTime{-1.0f};
+    Vec3 target{};
+    RequestedAction action{RequestedAction::None};
+};
 }  // namespace
 
 void TeamBrain::ThinkTeam(WorldState& /*world*/, float /*dtSeconds*/)
@@ -190,6 +197,7 @@ void BrainSimplePossession::Think(Player& player, const WorldState& world, const
     const auto& tactics = world.teams[teamIndex].tactics;
     const auto& tctx = ctx.team[teamIndex];
     float breath = std::clamp(player.condition.breath, 0.0f, 1.0f);
+    const float now = world.clock.timeSeconds;
 
     const bool ownsBall = (world.ball.mode == BallMode::Controlled && world.ball.ownerPlayerId == player.id);
 
@@ -217,6 +225,14 @@ void BrainSimplePossession::Think(Player& player, const WorldState& world, const
     }
     if (ownsBall)
     {
+        // Use cached decision to reduce jitter.
+        if (now < player.state.nextDecisionTime && player.state.cachedAction != RequestedAction::None)
+        {
+            target = player.state.cachedTarget;
+            action = player.state.cachedAction;
+            speed01 = 0.4f;
+        }
+
         // Default dribble direction toward goal, then pick a safer variant.
         Vec3 toGoal{goalPos.x - player.state.position.x, 0.0f, goalPos.z - player.state.position.z};
         float glen = Length2D(toGoal.x, toGoal.z);
@@ -235,7 +251,7 @@ void BrainSimplePossession::Think(Player& player, const WorldState& world, const
         }
 
         // If we recently chose a dribble direction, reuse it for a short hold to prevent oscillation.
-        const float now = world.clock.timeSeconds;
+        float lineMargin = 5.0f;
         auto itHold = g_dribbleHold.find(player.id);
         if (itHold != g_dribbleHold.end() && now < itHold->second.untilTime)
         {
@@ -256,77 +272,76 @@ void BrainSimplePossession::Think(Player& player, const WorldState& world, const
         else
         {
             // Choose safer dribble direction among a few candidates with minimal turn.
-        float baseAng = 0.6f;  // ~34deg
-        float maxAng = 1.0f;   // ~57deg
-        std::vector<Vec3> dirs = {
-            fwdDir,
-            RotateY(fwdDir, baseAng),
-            RotateY(fwdDir, -baseAng),
-            RotateY(fwdDir, maxAng),
-            RotateY(fwdDir, -maxAng)};
+            float baseAng = 0.6f;  // ~34deg
+            float maxAng = 1.0f;   // ~57deg
+            std::vector<Vec3> dirs = {
+                fwdDir,
+                RotateY(fwdDir, baseAng),
+                RotateY(fwdDir, -baseAng),
+                RotateY(fwdDir, maxAng),
+                RotateY(fwdDir, -maxAng)};
 
-        float bestScore = -1e9f;
-        Vec3 bestDir = fwdDir;
-        float lineMargin = 5.0f;
-        for (const auto& d : dirs)
-        {
-            float normLen = Length2D(d.x, d.z);
-            if (normLen < 1e-4f) continue;
-            Vec3 nd{d.x / normLen, 0.0f, d.z / normLen};
-            float angle = std::acos(std::clamp(nd.x * fwdDir.x + nd.z * fwdDir.z, -1.0f, 1.0f));
-            float anglePenalty = angle * (0.5f + (1.0f - player.stats.control) * 0.3f);  // even more willing to turn
-
-            float threatPenalty = 0.0f;
-            if (vision.nearestOppDist < 14.0f)
+            float bestScore = -1e9f;
+            Vec3 bestDir = fwdDir;
+            for (const auto& d : dirs)
             {
-                threatPenalty += (14.0f - vision.nearestOppDist) * 4.0f;
-                // Penalize moving toward threat direction.
-                float toward = nd.x * vision.nearestOppVec.x + nd.z * vision.nearestOppVec.z;
-                if (toward > 0.0f)
+                float normLen = Length2D(d.x, d.z);
+                if (normLen < 1e-4f) continue;
+                Vec3 nd{d.x / normLen, 0.0f, d.z / normLen};
+                float angle = std::acos(std::clamp(nd.x * fwdDir.x + nd.z * fwdDir.z, -1.0f, 1.0f));
+                float anglePenalty = angle * (0.5f + (1.0f - player.stats.control) * 0.3f);  // even more willing to turn
+
+                float threatPenalty = 0.0f;
+                if (vision.nearestOppDist < 14.0f)
                 {
-                    threatPenalty += toward * 12.0f;
+                    threatPenalty += (14.0f - vision.nearestOppDist) * 4.0f;
+                    // Penalize moving toward threat direction.
+                    float toward = nd.x * vision.nearestOppVec.x + nd.z * vision.nearestOppVec.z;
+                    if (toward > 0.0f)
+                    {
+                        threatPenalty += toward * 12.0f;
+                    }
+                }
+
+                // Corridor (narrow gap) penalty: if two or more opponents are close to the path within 8m ahead
+                // and lateral clearance < 1m, heavily penalize to force turning away.
+                float corridorPenalty = 0.0f;
+                int closeCount = 0;
+                for (const auto& opp : world.players)
+                {
+                    if (opp.teamIndex == teamIndex) continue;
+                    float dx = opp.state.position.x - player.state.position.x;
+                    float dz = opp.state.position.z - player.state.position.z;
+                    float proj = dx * nd.x + dz * nd.z;
+                    if (proj <= 0.0f || proj > 8.0f) continue;  // only look ahead up to 8m
+                    float lateral = std::abs(dx * nd.z - dz * nd.x);
+                    if (lateral < 3.0f)
+                    {
+                        closeCount++;
+                        corridorPenalty += (3.0f - lateral) * 10.0f;
+                    }
+                }
+                if (closeCount >= 2)
+                {
+                    corridorPenalty *= 2.f;  // tighten if multiple obstacles form a narrow channel
+                }
+
+                // Touchline safety: penalize directions that drive ball outside margin.
+                float futureZ = player.state.position.z + nd.z * 8.0f;
+                float linePenalty = 0.0f;
+                if (futureZ < lineMargin)
+                    linePenalty += (lineMargin - futureZ) * 3.0f;
+                else if (futureZ > ctx.pitchHeight - lineMargin)
+                    linePenalty += (futureZ - (ctx.pitchHeight - lineMargin)) * 3.0f;
+
+                float score = (nd.x * fwdDir.x + nd.z * fwdDir.z) * 1.5f - anglePenalty - threatPenalty - corridorPenalty - linePenalty;
+                score -= (1.0f - breath) * 6.0f;  // low breath hurts dribble confidence
+                if (score > bestScore)
+                {
+                    bestScore = score;
+                    bestDir = nd;
                 }
             }
-
-            // Corridor (narrow gap) penalty: if two or more opponents are close to the path within 8m ahead
-            // and lateral clearance < 1m, heavily penalize to force turning away.
-            float corridorPenalty = 0.0f;
-            int closeCount = 0;
-            for (const auto& opp : world.players)
-            {
-                if (opp.teamIndex == teamIndex) continue;
-                float dx = opp.state.position.x - player.state.position.x;
-                float dz = opp.state.position.z - player.state.position.z;
-                float proj = dx * nd.x + dz * nd.z;
-                if (proj <= 0.0f || proj > 8.0f) continue;  // only look ahead up to 8m
-                float lateral = std::abs(dx * nd.z - dz * nd.x);
-                if (lateral < 3.0f)
-                {
-                    closeCount++;
-                    corridorPenalty += (3.0f - lateral) * 10.0f;
-                }
-            }
-            if (closeCount >= 2)
-            {
-                corridorPenalty *= 2.f;  // tighten if multiple obstacles form a narrow channel
-            }
-
-            // Touchline safety: penalize directions that drive ball outside margin.
-            float futureZ = player.state.position.z + nd.z * 8.0f;
-            float linePenalty = 0.0f;
-            if (futureZ < lineMargin)
-                linePenalty += (lineMargin - futureZ) * 3.0f;
-            else if (futureZ > ctx.pitchHeight - lineMargin)
-                linePenalty += (futureZ - (ctx.pitchHeight - lineMargin)) * 3.0f;
-
-            float score = (nd.x * fwdDir.x + nd.z * fwdDir.z) * 1.5f - anglePenalty - threatPenalty - corridorPenalty - linePenalty;
-            score -= (1.0f - breath) * 6.0f;  // low breath hurts dribble confidence
-            if (score > bestScore)
-            {
-                bestScore = score;
-                bestDir = nd;
-            }
-        }
             target = {player.state.position.x + bestDir.x * 8.0f, 0.0f, player.state.position.z + bestDir.z * 8.0f};
             // Clamp target inside touchlines margin.
             target.z = std::clamp(target.z, lineMargin, ctx.pitchHeight - lineMargin);
@@ -450,9 +465,17 @@ void BrainSimplePossession::Think(Player& player, const WorldState& world, const
             target = bestAnyPos;
             speed01 = 0.35f;
         }
+
+        // Cache decision to reduce jitter for a short window.
+        player.state.cachedAction = action;
+        player.state.cachedTarget = target;
+        player.state.nextDecisionTime = now + 0.3f;
     }
     else
     {
+        // Not owning ball: clear cached action.
+        player.state.cachedAction = RequestedAction::None;
+        player.state.nextDecisionTime = now;
         // Off-ball: defend or support spacing.
         if (world.ball.mode == BallMode::Controlled)
         {

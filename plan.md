@@ -40,26 +40,43 @@ Scope: build a strategic, non-player-controlled football game where the player s
 - [x] Collision/contact: on close approach probabilistic steal/loose ball knock-out.
 
 #### M3.2 – Toward Systemic AI (in progress)
-- [ ] Decision lock cadence: cache action/target for ~0.25–0.3s to prevent frame-to-frame jitter; store per-player decision timer.
-- [ ] Space grid (10×6) weighting: open space, forward value, ally/enemy density, touchline safety → suggest support targets.
-- [ ] Explicit pass/dribble feasibility checks (distance bounds, lane clearance, line safety, pass cooldown) and dribble-risk checks (corridor width, line risk, low breath/pressure).
-- [ ] Selection rules: pass if feasible & dribble is risky; else compare scores; fallback escape when both risky.
-- [ ] Execution re-validate: receiver still present within 5m; otherwise cancel pass.
-- [ ] Role/tactics modulation: use team width/line/tempo to bias support positions and pressures.
+- [ ] Decision lock cadence: cache action/target for ~0.25–0.3s to prevent frame-to-frame jitter; store per-player decision timer. (partially coded, needs clean integration)
+- [ ] Player FSM (low tier): explicit states `Chase`, `Possess`, `Support`, `DefendPress`, `RecoverShape`, `Rest`; transitions use ball ownership, pressure distance, breath/fatigue, tactics flags.
+- [ ] Priority tree (mid tier): on-ball `Shoot > Pass > Dribble > Hold`, off-ball `Press > BlockLane > RecoverShape`; tactics (width/line/tempo) adjust node weights/thresholds.
+- [ ] Space grid (10×6) weighting: forward value, open space, ally/enemy density, touchline safety → suggest support targets and recover anchors.
+- [ ] Explicit feasibility/risk checks: pass (4–35m, lane clearance, line safety, cooldown), dribble (corridor width, line risk, low breath/pressure) → selection rules: pass if feasible & dribble risky; else compare scores; escape if both risky.
+- [ ] Execution re-validate: receiver still present within 5m; otherwise cancel pass/keep dribble.
+- [ ] Tactics modulation & roles: bias support positions by team width/line; press intensity feeds pressure distance; future hook for roles (e.g., CB/FB/MF/FW) to gate behaviors.
 
-### M4 – Outcome Sampling (Events)
-- [ ] Ground pass model: intent target + error model (distance, passer passGround, pressure, fatigue) → actual landing, arrival time, bounce intensity.
-- [ ] Lob/cross model: similar error model using `passLong`; generate landing point + hang time profile → BallKickLob().
-- [ ] Trap/first-touch resolution: success vs heavy-touch vs lose, based on firstTouch/composure/pressure/fatigue/bounce → BallClaimControl() or BallKickGround().
-- [ ] Heading resolution: contact/on-target/off/whiff using cross quality + jump/targeting/heading + pressure → BallRegisterTouch() + BallKick*().
-- [ ] Expose event logs for debugging/replay.
+#### M3.3 – Positional Logic
+- [ ] Formation roles registry: 4-4-2 roles with per-role anchors for defensive/neutral/attacking phases and roaming bounds.
+- [ ] Shape maintenance: blend role anchors with space-grid targets; enforce minimum spacing so lines don’t collapse to corners/flags.
+- [ ] Phase handling: in-play vs dead-ball; on restarts freeze non-kicker at anchors (not corner flag), unlock after first non-kicker touch.
+- [ ] Support via zone behavior: use `ZoneBehavior` (8-dir+hold) to steer support runs; role overrides (FB overlap, CDM hold, ST peel-off).
+- [ ] Safety clamps: keep all anchors/targets within pitch margin; separate defenders/attackers by half-space to avoid all-in in one lane.
+- [ ] Debug overlays: draw role anchors/roaming boxes and chosen support vectors.
+- [ ] Emphasize space distribution: enforce per-line spacing and anchor adherence so players occupy different lanes/bands instead of clustering; validate via overlay.
 
-### M5 – Rendering & UI (raylib + raygui)
-- [ ] Render pitch/top-down camera, players as circles/billboards, ball with ground/lob presentation.
-- [ ] Debug overlays: zones grid, intents (target arrows), ball landing markers, event log panel.
-- [ ] Simple control panel to tweak tactics parameters live; ability to start/pause/reset with fixed seed.
+### M3.4 – Directional/Probabilistic Behaviors (new)
+- [ ] Role traits: add aggression, passPref, shootPref, dribblePref to `PlayerStats`; use to weight action choices.
+- [ ] Zone×Role direction weights: per-zone (8 dirs + hold) blended with role traits to produce movement/support direction probabilities.
+- [ ] Partial tactics layer: line/side-specific modifiers (e.g., overlap left, central press) applied atop zone/role weights; team tactics (width/line/tempo/directness) scale them.
+- [ ] Action mapping: sampled direction biases pass/dribble/hold/shoot probabilities; enforce pass/shot distance bounds and lane clearance.
+- [ ] Telemetry: expose chosen direction vector, action probabilities for debugging.
 
-### M6 – Dev Experience & Testing
-- [ ] Logging/tracing pipeline for outcome sampling and AI decisions (toggleable).
-- [ ] Determinism checks: run two seeds to confirm identical outputs; minimal unit tests for utilities (zones, RNG).
-- [ ] Packaging instructions: build/run commands in README; note third-party licenses (raygui, raylib).
+### M4 – Event Models & Match Rules
+- [ ] Ground pass error model: intent → sampled landing/arrival/bounce using passGround, pressure, fatigue, distance; drive BallKickGround.
+- [ ] Lob/cross model: sampled landing + hang time + apex using passLong; drive BallKickLob; integrate heading/contact windows.
+- [ ] First-touch/trap/loose: resolve heavy-touch vs control vs lose using firstTouch/composure/pressure/fatigue/bounce; update BallClaimControl/BallKickGround.
+- [ ] Set pieces & restarts polish: corner/goal-kick/throw-in routines with 1s delay, kick/passing options, positioning.
+- [ ] Event logging hooks per touch/pass/shot for replay/debug.
+
+### M5 – Spatial/Tactical Systems & Debug UI
+- [ ] Space grid overlay + support anchors visualization; role/tactic-biased target selection (width/line/tempo).
+- [ ] Vision/perception overlays (cones, lane blocks), intent arrows, ball landing markers.
+- [ ] Simple control panel to tweak tactics live; start/pause/reset with seed.
+
+### M6 – Determinism, Logging, Testing, Packaging
+- [ ] Determinism checks: twin-seed runs, replay validation; unit tests for space grid, decision filters, RNG.
+- [ ] Structured logging/tracing for AI decisions and event sampling (toggleable).
+- [ ] Packaging/build notes, run scripts, and third-party license notice (raylib/raygui).
