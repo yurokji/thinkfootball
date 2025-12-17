@@ -80,6 +80,7 @@ struct Player
     PlayerCondition condition{};
     PlayerIntent intent{};
     PlayerState state{};
+    std::mt19937_64 rng;  // per-player RNG
 };
 
 struct TeamTactics

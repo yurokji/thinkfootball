@@ -58,7 +58,7 @@ Scope: build a strategic, non-player-controlled football game where the player s
 - [ ] Emphasize space distribution: enforce per-line spacing and anchor adherence so players occupy different lanes/bands instead of clustering; validate via overlay.
 
 ### M3.4 – Directional/Probabilistic Behaviors (new)
-- [ ] Role traits: add aggression, passPref, shootPref, dribblePref to `PlayerStats`; use to weight action choices.
+- [x] Role traits: add aggression, passPref, shootPref, dribblePref, holdPref to `PlayerStats`; use to weight action choices.
 - [ ] Zone×Role direction weights: per-zone (8 dirs + hold) blended with role traits to produce movement/support direction probabilities.
 - [ ] Partial tactics layer: line/side-specific modifiers (e.g., overlap left, central press) applied atop zone/role weights; team tactics (width/line/tempo/directness) scale them.
 - [ ] Action mapping: sampled direction biases pass/dribble/hold/shoot probabilities; enforce pass/shot distance bounds and lane clearance.

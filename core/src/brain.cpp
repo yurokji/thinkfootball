@@ -1,4 +1,5 @@
 #include "thinkfootball/brain.h"
+#include "thinkfootball/zone_behavior.h"
 
 #include <algorithm>
 #include <cmath>
@@ -87,6 +88,43 @@ struct DecisionCache
     Vec3 target{};
     RequestedAction action{RequestedAction::None};
 };
+
+inline Vec3 DirFromIndex(int idx)
+{
+    // idx: Direction8 enum order N, NE, E, SE, S, SW, W, NW
+    switch (idx)
+    {
+    case 0: return {0.0f, 0.0f, 1.0f};
+    case 1: return {0.7071f, 0.0f, 0.7071f};
+    case 2: return {1.0f, 0.0f, 0.0f};
+    case 3: return {0.7071f, 0.0f, -0.7071f};
+    case 4: return {0.0f, 0.0f, -1.0f};
+    case 5: return {-0.7071f, 0.0f, -0.7071f};
+    case 6: return {-1.0f, 0.0f, 0.0f};
+    case 7: return {-0.7071f, 0.0f, 0.7071f};
+    default: return {0.0f, 0.0f, 0.0f};
+    }
+}
+
+Vec3 BiasVectorFromBehavior(const ZoneBehavior& zb, bool attackPositiveX)
+{
+    // Sum weighted direction vectors (flip X if attacking negative).
+    Vec3 acc{};
+    for (int i = 0; i < 8; ++i)
+    {
+        Vec3 d = DirFromIndex(i);
+        if (!attackPositiveX) d.x = -d.x;
+        acc.x += d.x * zb.dirWeight[i];
+        acc.z += d.z * zb.dirWeight[i];
+    }
+    float len = Length2D(acc.x, acc.z);
+    if (len > 1e-4f)
+    {
+        acc.x /= len;
+        acc.z /= len;
+    }
+    return acc;
+}
 }  // namespace
 
 void TeamBrain::ThinkTeam(WorldState& /*world*/, float /*dtSeconds*/)
@@ -283,6 +321,10 @@ void BrainSimplePossession::Think(Player& player, const WorldState& world, const
 
             float bestScore = -1e9f;
             Vec3 bestDir = fwdDir;
+            // Role directional bias
+            ZoneBehavior roleBias = RoleDirectionBias(player.role, teamIndex == 0);
+            Vec3 biasDir = BiasVectorFromBehavior(roleBias, teamIndex == 0);
+
             for (const auto& d : dirs)
             {
                 float normLen = Length2D(d.x, d.z);
@@ -334,7 +376,8 @@ void BrainSimplePossession::Think(Player& player, const WorldState& world, const
                 else if (futureZ > ctx.pitchHeight - lineMargin)
                     linePenalty += (futureZ - (ctx.pitchHeight - lineMargin)) * 3.0f;
 
-                float score = (nd.x * fwdDir.x + nd.z * fwdDir.z) * 1.5f - anglePenalty - threatPenalty - corridorPenalty - linePenalty;
+                float roleBiasScore = nd.x * biasDir.x + nd.z * biasDir.z;
+                float score = (nd.x * fwdDir.x + nd.z * fwdDir.z) * 1.5f + roleBiasScore * 1.2f - anglePenalty - threatPenalty - corridorPenalty - linePenalty;
                 score -= (1.0f - breath) * 6.0f;  // low breath hurts dribble confidence
                 if (score > bestScore)
                 {

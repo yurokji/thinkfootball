@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cmath>
 #include <random>
+#include <chrono>
 
 #include "thinkfootball/brain.h"
 #include "thinkfootball/constants.h"
@@ -163,7 +164,7 @@ VisionHit CheckVision(const tf::Player& viewer, const std::vector<tf::Player>& p
 }
 }  // namespace
 
-int main()
+int main(int argc, char** argv)
 {
     InitWindow(tfc::kWindowWidth, tfc::kWindowHeight, "Think Football");
     SetTargetFPS(60);
@@ -191,7 +192,23 @@ int main()
     tf::WorldState world{};
     world.ball.pos = {tfc::kPitchLengthM * 0.5f, 0.0f, tfc::kPitchWidthM * 0.5f};
     world.pitch = tf::BuildStandardPitch(tfc::kPitchLengthM, tfc::kPitchWidthM);
-    SeedRng(world, 42);
+    // Seed: fixed for determinism, or time-based if "auto" passed.
+    bool autoSeed = false;
+    for (int i = 1; i < argc; ++i)
+    {
+        if (std::string(argv[i]) == "auto") autoSeed = true;
+    }
+    if (autoSeed)
+    {
+        uint64_t seed = static_cast<uint64_t>(std::chrono::high_resolution_clock::now().time_since_epoch().count());
+        SeedRng(world, seed);
+        std::cout << "Auto seed: " << seed << std::endl;
+    }
+    else
+    {
+        SeedRng(world, 42);
+        std::cout << "Fixed seed: 42 (pass 'auto' to randomize)" << std::endl;
+    }
     world.teams[0].name = "Home";
     world.teams[1].name = "Away";
     world.teams[0].tactics = {0.55f, 0.55f, 0.75f, 0.5f, 0.6f};
@@ -255,6 +272,9 @@ int main()
         p.state.position = {teamIndex == 0 ? slot.x : mirrorX(slot.x), 0.0f, slot.z};
         p.intent.targetPos = p.state.position;
         p.stats = slot.stats;
+        // Per-player RNG: derived from world seed and player id for stable per-player randomness.
+        uint64_t mixed = world.rngSeed ^ (static_cast<uint64_t>(id + 1) * 0x9E3779B97F4A7C15ULL);
+        p.rng.seed(mixed);
         return p;
     };
 
@@ -317,6 +337,11 @@ int main()
         return restartMode != RestartType::None || restartKickPending;
     };
 
+    auto LogOwnerEvent = [&](const tf::Player& p, const char* action, const tf::Vec3& tgt) {
+        std::cout << "[" << (p.teamIndex == 0 ? "HOME" : "AWAY") << " #" << (p.id + 1) << " " << p.role
+                  << "] " << action << " -> (" << tgt.x << ", " << tgt.z << ")\n";
+    };
+
     while (!WindowShouldClose())
     {
         tf::AdvanceClock(world, tfc::kTargetDt);
@@ -328,20 +353,68 @@ int main()
         ctx.pitchWidth = tfc::kPitchLengthM;
         ctx.pitchHeight = tfc::kPitchWidthM;
         teamBrain.ApplyTactics(world, ctx);
-        bool deadBallPending = (restartMode != RestartType::None) || restartKickPending || restartUntouched;
+        bool deadBallPending = (restartMode != RestartType::None) || restartKickPending; // only freeze until kick taken
         for (auto& player : world.players)
         {
-            if (deadBallPending && player.id != restartKickerId)
+            if (deadBallPending)
             {
-                // Freeze everyone except the designated kicker during dead-ball phases.
-                player.intent.targetPos = player.state.position;
-                player.intent.desiredSpeed01 = 0.0f;
-                player.intent.action = tf::RequestedAction::None;
-                player.intent.faceDir = {0, 0, 0};
-                continue;
+                if (player.id == restartKickerId && restartKickPending)
+                {
+                    // Force kicker intent toward restart target; face it.
+                    player.intent.targetPos = restartKickTarget;
+                    player.intent.desiredSpeed01 = 0.0f;
+                    player.intent.action = tf::RequestedAction::Pass;
+                    float dx = restartKickTarget.x - player.state.position.x;
+                    float dz = restartKickTarget.z - player.state.position.z;
+                    player.state.facingRadians = std::atan2(dx, dz);
+                    // Skip brain to avoid overwriting forced intent.
+                    player.state.position = ClampToPitch(player.state.position);
+                    continue;
+                }
+                else if (player.id != restartKickerId)
+                {
+                    // Freeze everyone except the designated kicker during dead-ball phases.
+                    player.intent.targetPos = player.state.position;
+                    player.intent.desiredSpeed01 = 0.0f;
+                    player.intent.action = tf::RequestedAction::None;
+                    player.intent.faceDir = {0, 0, 0};
+                    player.state.position = ClampToPitch(player.state.position);
+                    continue;
+                }
             }
             TickPlayerWithBrain(player, world, ctx, moveController, brainSimple, tfc::kTargetDt);
             player.state.position = ClampToPitch(player.state.position);
+        }
+
+        // If a restart kick is pending, execute it immediately (do not wait for brain).
+        if (restartKickPending && restartKickerId >= 0)
+        {
+            auto itKick = std::find_if(world.players.begin(), world.players.end(),
+                                       [&](const tf::Player& p) { return p.id == restartKickerId; });
+            if (itKick != world.players.end())
+            {
+                tf::Player& kicker = *itKick;
+                tf::Vec3 target = restartKickTarget;
+                tf::Vec3 dir{target.x - kicker.state.position.x, 0.0f, target.z - kicker.state.position.z};
+                float len = std::sqrt(dir.x * dir.x + dir.z * dir.z);
+                if (len < 0.5f)
+                {
+                    float dirSign = (kicker.teamIndex == 0) ? 1.0f : -1.0f;
+                    dir = {dirSign, 0.0f, 0.0f};
+                    len = 1.0f;
+                }
+                dir.x /= len;
+                dir.z /= len;
+                const float passSpeed = 18.0f;
+                tf::Vec3 vel{dir.x * passSpeed, 0.0f, dir.z * passSpeed};
+                tf::Vec3 startPos{kicker.state.position.x + dir.x * 0.5f, 0.0f, kicker.state.position.z + dir.z * 0.5f};
+                tf::BallKickGround(world.ball, kicker.id, kicker.teamIndex, tickCount, startPos, vel);
+                passBlockId = kicker.id;
+                passBlockUntil = tickCount + 30;
+                restartKickPending = false;
+                restartUntouched = true;
+                restartNoTouchId = kicker.id;
+            }
         }
 
         // Reset hasBall flags.
@@ -493,8 +566,10 @@ int main()
                 {
                     if (restartUntouched && player.id == restartNoTouchId)
                     {
-                        // Illegal retouch during dead-ball; ignore possession and continue.
-                        continue;
+                        // Kicker cannot reclaim before another touch; drop possession immediately.
+                        world.ball.ownerPlayerId = -1;
+                        world.ball.mode = tf::BallMode::FreeGround;
+                        break;
                     }
                     player.state.hasBall = true;
                     ownerPtr = &player;
@@ -531,6 +606,9 @@ int main()
                         }
                         restartKickPending = false;
                         restartKickerId = -1;
+                        restartUntouched = true;
+                        restartNoTouchId = player.id;
+                        world.ball.ownerPlayerId = -1; // free ball until another player touches
                     }
                     else if (player.intent.action == tf::RequestedAction::Pass)
                     {
