@@ -84,29 +84,48 @@ void MovementArcade::Tick(Player& player, const WorldState& world, float dtSecon
         desiredSpeed *= (dist / slowRadius);
     }
 
-    // Turn body toward desired direction with limited turn rate.
+    // Turn body toward desired direction with limited turn rate (slower when fast).
     float desiredHeading = player.state.facingRadians;
     if (dist > 1e-3f)
     {
         desiredHeading = std::atan2(dir.x, dir.z);
     }
     float angleDiff = WrapAngle(desiredHeading - player.state.facingRadians);
-    float maxTurn = turnRateRadPerSec * dtSeconds;
+    float currentSpeed = LengthXZ(player.state.velocity);
+    float speedRatio = std::clamp(currentSpeed / std::max(maxSpeed, 1e-3f), 0.0f, 1.0f);
+    float turnScale = 0.5f + (1.0f - speedRatio) * 0.5f;  // fast일수록 회전 한계 축소
+    float maxTurn = turnRateRadPerSec * dtSeconds * turnScale;
     float appliedTurn = std::clamp(angleDiff, -maxTurn, maxTurn);
     player.state.facingRadians = WrapAngle(player.state.facingRadians + appliedTurn);
 
-    // Do not allow movement backwards; scale speed by facing alignment.
-    float forwardFactor = 1.0f;
+    // Do not allow backwards movement; if target는 후방이면 정지+회전만 수행.
     float angleToMove = WrapAngle(desiredHeading - player.state.facingRadians);
-    forwardFactor = std::cos(angleToMove);  // 1 at 0 deg, 0 at 90 deg, negative if behind
-    // Allow some movement even when behind, but heavily damped.
-    desiredSpeed *= std::max(0.2f, forwardFactor);
+    float angleAbs = std::fabs(angleToMove);
+    float turnSkill = 0.6f + player.stats.control * 0.4f; // 컨트롤이 좋을수록 회전·감속 페널티 완화
+    if (angleAbs > (3.1415926535f * 0.5f))
+    {
+        desiredSpeed = 0.0f;
+    }
+    else
+    {
+        float forwardFactor = std::cos(angleToMove);  // 1 at 0 deg, 0 at 90 deg
+        desiredSpeed *= std::clamp(forwardFactor, 0.0f, 1.0f);
+        // 추가 감속: 각도가 클수록 속도 더 줄임.
+        float angleDamp = 1.0f - (angleAbs / (3.1415926535f * 0.5f)) * 0.7f; // up to -70%
+        desiredSpeed *= std::clamp(angleDamp, 0.3f, 1.0f);
+        // 컨트롤 좋은 선수는 감속 페널티 완화.
+        desiredSpeed *= turnSkill;
+    }
 
     // Accelerate toward desired velocity
     Vec3 desiredVel{dir.x * desiredSpeed, 0.0f, dir.z * desiredSpeed};
     Vec3 delta{desiredVel.x - player.state.velocity.x, 0.0f, desiredVel.z - player.state.velocity.z};
     float deltaLen = LengthXZ(delta);
     float maxDelta = accel * dtSeconds;
+    // 회전 중 가속 제한: 정면 정렬이 낮고 컨트롤이 낮을수록 덜 급하게 방향 전환
+    float align = std::max(0.0f, std::cos(angleAbs));
+    float accelScale = std::clamp(0.3f + align * turnSkill, 0.3f, 1.0f);
+    maxDelta *= accelScale;
     if (deltaLen > maxDelta && deltaLen > 1e-5f)
     {
         delta.x *= maxDelta / deltaLen;

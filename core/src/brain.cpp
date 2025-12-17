@@ -125,6 +125,69 @@ Vec3 BiasVectorFromBehavior(const ZoneBehavior& zb, bool attackPositiveX)
     }
     return acc;
 }
+
+// 패스 가능성: 거리 4~35m, 라인 안전, 패스 레인 여유(최소 간격).
+bool IsPassFeasible(const Player& passer, const Vec3& target, const WorldState& world, float pitchWidth, float pitchLength)
+{
+    float dx = target.x - passer.state.position.x;
+    float dz = target.z - passer.state.position.z;
+    float dist2 = dx * dx + dz * dz;
+    if (dist2 < 4.0f * 4.0f || dist2 > 35.0f * 35.0f) return false;
+
+    // 라인 안쪽 최소 마진
+    const float margin = 1.0f;
+    if (target.x < -margin || target.x > pitchLength + margin) return false;
+    if (target.z < -margin || target.z > pitchWidth + margin) return false;
+
+    // 레인 간섭: 패스 선분에서 상대까지의 최소 거리
+    float dist = std::sqrt(dist2);
+    float minGap = 99.f;
+    for (const auto& opp : world.players)
+    {
+        if (opp.teamIndex == passer.teamIndex) continue;
+        float ox = opp.state.position.x - passer.state.position.x;
+        float oz = opp.state.position.z - passer.state.position.z;
+        float proj = (ox * dx + oz * dz) / std::max(dist2, 1e-3f);
+        proj = std::clamp(proj, 0.0f, 1.0f);
+        float cx = passer.state.position.x + dx * proj;
+        float cz = passer.state.position.z + dz * proj;
+        float gx = opp.state.position.x - cx;
+        float gz = opp.state.position.z - cz;
+        float gap = std::sqrt(gx * gx + gz * gz);
+        minGap = std::min(minGap, gap);
+    }
+    if (minGap < 2.5f) return false;
+    return true;
+}
+
+// 드리블 위험도: 통로 폭 협소, 터치라인 인접, 압박 근접.
+bool IsDribbleRisky(const Player& player, const WorldState& world, float pitchWidth)
+{
+    const float lookAhead = 8.0f;
+    const float narrow = 3.0f;
+    int closeCount = 0;
+    for (const auto& opp : world.players)
+    {
+        if (opp.teamIndex == player.teamIndex) continue;
+        float dx = opp.state.position.x - player.state.position.x;
+        float dz = opp.state.position.z - player.state.position.z;
+        // 투영: 현재 페이싱 방향 기준
+        float fx = std::sin(player.state.facingRadians);
+        float fz = std::cos(player.state.facingRadians);
+        float proj = dx * fx + dz * fz;
+        if (proj <= 0.0f || proj > lookAhead) continue;
+        float lateral = std::abs(dx * fz - dz * fx);
+        if (lateral < narrow)
+        {
+            closeCount++;
+        }
+    }
+    bool corridorRisk = (closeCount >= 2);
+
+    // 터치라인 근접
+    bool lineRisk = (player.state.position.z < 2.0f) || (player.state.position.z > pitchWidth - 2.0f);
+    return corridorRisk || lineRisk;
+}
 }  // namespace
 
 void TeamBrain::ThinkTeam(WorldState& /*world*/, float /*dtSeconds*/)
@@ -496,17 +559,36 @@ void BrainSimplePossession::Think(Player& player, const WorldState& world, const
         float chanceForward = underPressure ? 0.95f : 0.6f;
         float chanceAny = underPressure ? 0.9f : 0.65f;
 
+        bool passChosen = false;
         if (canForward && action != RequestedAction::Shoot && (underPressure || breath < 0.7f || randPass < chanceForward))
         {
             action = RequestedAction::Pass;
             target = bestForwardPos;
             speed01 = 0.35f;  // prep pass
+            passChosen = true;
         }
         else if (canAny && action != RequestedAction::Shoot && (underPressure || breath < 0.7f || randPass < chanceAny))
         {
             action = RequestedAction::Pass;
             target = bestAnyPos;
             speed01 = 0.35f;
+            passChosen = true;
+        }
+
+        // Feasibility/risk override
+        bool passOk = passChosen && IsPassFeasible(player, target, world, ctx.pitchHeight, ctx.pitchWidth);
+        bool dribbleRisk = IsDribbleRisky(player, world, ctx.pitchHeight);
+        if (passOk && dribbleRisk)
+        {
+            action = RequestedAction::Pass;
+            speed01 = 0.35f;
+        }
+        else if (!passOk && dribbleRisk)
+        {
+            // 위험한 드리블: 잠시 홀드/턴
+            action = RequestedAction::None;
+            target = player.state.position;
+            speed01 = 0.1f;
         }
 
         // Cache decision to reduce jitter for a short window.
@@ -594,7 +676,13 @@ void TickPlayerWithBrain(Player& player,
                          PlayerBrain& brain,
                          float dtSeconds)
 {
-    brain.Think(player, world, ctx, dtSeconds);
+    // Rate-limit decisions to reduce jitter: reuse intent until nextDecisionTime.
+    if (world.clock.timeSeconds >= player.state.nextDecisionTime)
+    {
+        brain.Think(player, world, ctx, dtSeconds);
+        player.state.nextDecisionTime = world.clock.timeSeconds + 0.25f;  // ~4 Hz
+    }
+    // Movement consumes the last intent (updated or reused).
     movement.Tick(player, world, dtSeconds);
 }
 }  // namespace tf

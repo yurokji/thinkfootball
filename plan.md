@@ -1,82 +1,81 @@
-# Think Football – Implementation Plan
+# Think Football – 구현 계획 (KOR)
 
-Scope: build a strategic, non-player-controlled football game where the player shapes win probabilities via tactics. v0.1 focuses on a deterministic core, outcome-sampling events, and a simple 2.5D viewer with debugging overlays.
+범위: 확률/전술 중심 비선수조작 축구 시뮬레이션. v0.1은 결정론 코어, 최소 이벤트 샘플링, 단순 2.5D 뷰어/디버그 오버레이에 집중.
 
-## Progress Checklist
-- [x] Read `for agent ai/dialog with ai.md` and `for agent ai/spec_game.md` to lock design pillars (probability-first, minimal physics, core/render split).
+## 진행 체크
+- [x] `for agent ai/dialog with ai.md`, `for agent ai/spec_game.md` 정독 → 설계 원칙 확정(확률 우선, 최소 물리, 코어/렌더 분리)
 
-## Milestones & Tasks
+## 마일스톤/태스크
 
-### M0 – Project Scaffolding
-- [x] Choose toolchain (C++17/20) and set up CMake project with separate `core` (static lib) and `client` (executable) targets.
-- [x] Vendor or link raylib; UI now uses raygui (imgui removed).
-- [x] Establish folder layout (`core/`, `client/`, `ui/`, `assets/`, `third_party/`), add minimal README/dev notes.
-- [x] Add basic CI or local scripts to build and run (optional if time-constrained).
+### M0 – 프로젝트 뼈대
+- [x] CMake로 `core`(정적 라이브러리) / `client`(실행 파일) 구성, C++17/20
+- [x] raylib + raygui 사용(Imgui 제거)
+- [x] 폴더 구조 (`core/`, `client/`, `ui/`, `assets/`, `third_party/`) 및 README/개발 노트
+- [x] 기본 빌드/실행 스크립트
 
-### M1 – Core Simulation Skeleton
-- [x] Define world/state structs: `PlayerState`, `PlayerStats`, `PlayerCondition`, `PlayerIntent`, `BallState`, `TeamState`, `WorldState`, `MatchClock`.
-- [x] Implement deterministic tick loop (fixed `dt`), seeded RNG service for outcome sampling/replay.
-- [x] Implement pitch zoning (5 lanes × 4 bands + special zones) and helpers to query zones for positions.
-- [x] Add JSON save/load for `WorldState` + RNG seed to enable mid-match saves/replays.
+### M1 – 코어 상태/시계/존
+- [x] 상태 구조체: PlayerState/Stats/Condition/Intent, BallState, TeamState, WorldState, MatchClock
+- [x] 결정론 틱 루프(고정 dt), 시드 RNG 서비스
+- [x] 피치 존(5레인×4밴드 + 특수존) 헬퍼
+- [x] WorldState + RNG 시드 JSON 저장/로드
 
-### M2 – Movement & Ball Minimal
-- [x] Implement `MovementBase` interface and `MovementArcade` stage-0 (seek/arrive, clamp speed, facing lerp).
-- [x] Add simple player separation/avoidance to prevent overlap.
-- [x] Implement ball state machine (`CONTROLLED`, `FREE_GROUND`, `FREE_AIR`) with light damping; keep Y as render parameter only.
-- [x] Promote ball to first-class entity: flight profile (scheduled air trajectory), touch/owner tracking, single BallTick/BallKick*/BallClaimControl API for use by events/replay.
+### M2 – 무브먼트 & 볼 최소화
+- [x] MovementArcade(시크/어라이브, 속도 제한, 페이싱 보간)
+- [x] 간단 분리/회피
+- [x] 볼 FSM(`CONTROLLED`, `FREE_GROUND`, `FREE_AIR`), Y는 렌더용
+- [x] 볼 1급 엔티티: 비행 프로파일, 터치/소유 추적, BallTick/BallKick*/BallClaimControl API
 
-### M3 – AI Architecture
-- [x] Implement `PlayerBrain` / `TeamBrain` / `GroupContext` scaffolding; decouple decision (brain) from execution (movement).
-- [x] Player tick pipeline: `Brain -> Intent -> Movement -> State` respecting stats/condition constraints.
-- [x] Basic team tactics parameters (line height, press intensity, width, directness, tempo) stored in `TeamState`.
-- [x] Simple possession brain: chase when off-ball, dribble forward when on-ball, emit pass intents to nearby ahead teammates; central ball-claim/pass handling loop in client.
+### M3 – AI 아키텍처
+- [x] PlayerBrain/TeamBrain/GroupContext 스캐폴드, Brain→Intent→Movement→State 파이프라인
+- [x] 팀 전술 파라미터(라인, 프레스, 폭, 직접성, 템포)
+- [x] 기본 소유 브레인: 오프볼 추격, 온볼 드리블, 근거리 패스 의도, 클라이언트 루프에서 공 처리
 
-#### M3.1 – Current Gameplay Loop (ad-hoc)
-- [x] Randomized 3v3 spawn per half, basic separation, heading indicators, clamp to pitch with resized render scale.
-- [x] Simple goal detection + scoreboard; ball reset on score.
-- [x] Pass/shot handling on client (ground kick, shooter/pass blocker to avoid instant reclaim).
-- [x] Forward-only pass heuristic + near-goal shooting trigger.
-- [x] Vision cones rendered/toggled; per-player awareness scaling.
-- [x] Collision/contact: on close approach probabilistic steal/loose ball knock-out.
+#### M3.1 – 현재 루프(임시)
+- [x] 3v3 랜덤 스폰, 기본 분리, 헤딩 인디케이터, 피치 클램프/스케일
+- [x] 골 감지/스코어보드/리셋
+- [x] 패스/슛 처리(즉시 재소유 방지), 전방 패스 휴리스틱, 근골대 슛
+- [x] 시야콘 렌더/토글, 인식치 반영
+- [x] 접촉 시 스틸/루즈볼 확률 처리
 
-#### M3.2 – Toward Systemic AI (in progress)
-- [ ] Decision lock cadence: cache action/target for ~0.25–0.3s to prevent frame-to-frame jitter; store per-player decision timer. (partially coded, needs clean integration)
-- [ ] Player FSM (low tier): explicit states `Chase`, `Possess`, `Support`, `DefendPress`, `RecoverShape`, `Rest`; transitions use ball ownership, pressure distance, breath/fatigue, tactics flags.
-- [ ] Priority tree (mid tier): on-ball `Shoot > Pass > Dribble > Hold`, off-ball `Press > BlockLane > RecoverShape`; tactics (width/line/tempo) adjust node weights/thresholds.
-- [ ] Space grid (10×6) weighting: forward value, open space, ally/enemy density, touchline safety → suggest support targets and recover anchors.
-- [ ] Explicit feasibility/risk checks: pass (4–35m, lane clearance, line safety, cooldown), dribble (corridor width, line risk, low breath/pressure) → selection rules: pass if feasible & dribble risky; else compare scores; escape if both risky.
-- [ ] Execution re-validate: receiver still present within 5m; otherwise cancel pass/keep dribble.
-- [ ] Tactics modulation & roles: bias support positions by team width/line; press intensity feeds pressure distance; future hook for roles (e.g., CB/FB/MF/FW) to gate behaviors.
+#### M3.2 – 시스템형 AI (진행 중)
+- [ ] 결정 캐시 정리: 행동/타깃 ~0.25–0.3초 유지(현재 부분 적용, 정돈 필요)
+- [ ] 플레이어 FSM: `Chase/Possess/Support/DefendPress/RecoverShape/Rest` 전환(소유, 압박거리, 호흡/피로, 전술)
+- [ ] 우선순위 트리: 온볼 `Shoot > Pass > Dribble > Hold`, 오프볼 `Press > BlockLane > RecoverShape` (전술 가중 반영)
+- [ ] 가능/위험 체크: 패스(4–35m, 레인 클리어, 라인 안전, 쿨다운), 드리블(통로 폭, 라인 위험, 저호흡/압박)
+- [ ] 공간 그리드(10×6): 전진 가치, 공간 여유, 밀집도, 터치라인 안전도로 지원/복귀 타깃 제안
+- [ ] 실행 재검증: 수신자 5m 이내 없으면 패스 취소
+- [ ] 전술/역할 모듈레이션: 팀 폭/라인/프레스/템포로 지원 위치/압박 거리 조정, 역할 게이트
 
-#### M3.3 – Positional Logic
-- [ ] Formation roles registry: 4-4-2 roles with per-role anchors for defensive/neutral/attacking phases and roaming bounds.
-- [ ] Shape maintenance: blend role anchors with space-grid targets; enforce minimum spacing so lines don’t collapse to corners/flags.
-- [ ] Phase handling: in-play vs dead-ball; on restarts freeze non-kicker at anchors (not corner flag), unlock after first non-kicker touch.
-- [ ] Support via zone behavior: use `ZoneBehavior` (8-dir+hold) to steer support runs; role overrides (FB overlap, CDM hold, ST peel-off).
-- [ ] Safety clamps: keep all anchors/targets within pitch margin; separate defenders/attackers by half-space to avoid all-in in one lane.
-- [ ] Debug overlays: draw role anchors/roaming boxes and chosen support vectors.
-- [ ] Emphasize space distribution: enforce per-line spacing and anchor adherence so players occupy different lanes/bands instead of clustering; validate via overlay.
+#### M3.3 – 포지셔널 로직
+- [ ] 포메이션 역할 레지스트리(4-4-2) 및 페이즈별 앵커/로밍 범위
+- [ ] 형태 유지: 역할 앵커+공간 그리드 블렌드, 라인별 최소 간격으로 코너/플래그 몰림 방지
+- [ ] 페이즈: 인플레이 vs 데드볼, 재시작 시 킥커 외 앵커 정지, 첫 비킥커 터치 후 해제
+- [ ] 존 기반 지원: `ZoneBehavior` (8방향+홀드)로 지원 러닝, 역할별 오버라이드(FB 오버랩, CDM 홀드, ST 탈중앙)
+- [ ] 안전 클램프: 모든 타깃을 피치 마진 안쪽, 수비/공격 라인별 반코트 분리
+- [ ] 디버그: 앵커/로밍 박스, 선택된 지원 벡터 표시
+- [ ] 공간 분배 강조: 라인별 간격/앵커 준수로 레인/밴드 점유, 뭉침 방지
 
-### M3.4 – Directional/Probabilistic Behaviors (new)
-- [x] Role traits: add aggression, passPref, shootPref, dribblePref, holdPref to `PlayerStats`; use to weight action choices.
-- [ ] Zone×Role direction weights: per-zone (8 dirs + hold) blended with role traits to produce movement/support direction probabilities.
-- [ ] Partial tactics layer: line/side-specific modifiers (e.g., overlap left, central press) applied atop zone/role weights; team tactics (width/line/tempo/directness) scale them.
-- [ ] Action mapping: sampled direction biases pass/dribble/hold/shoot probabilities; enforce pass/shot distance bounds and lane clearance.
-- [ ] Telemetry: expose chosen direction vector, action probabilities for debugging.
+### M3.4 – 방향/확률 행동
+- [x] 역할 성향 추가: aggression/passPref/shootPref/dribblePref/holdPref
+- [ ] 존×역할 방향 가중(8+홀드) + 성향 블렌드 → 이동/지원 확률
+- [ ] 부분 전술(라인/측면) + 팀 전술(폭/라인/템포/직접성) 보정
+- [ ] 방향 샘플 → 패스/드리블/홀드/슛 확률 매핑(거리/레인 클리어 조건)
+- [ ] 텔레메트리: 선택 방향, 행동 확률 디버그 출력
 
-### M4 – Event Models & Match Rules
-- [ ] Ground pass error model: intent → sampled landing/arrival/bounce using passGround, pressure, fatigue, distance; drive BallKickGround.
-- [ ] Lob/cross model: sampled landing + hang time + apex using passLong; drive BallKickLob; integrate heading/contact windows.
-- [ ] First-touch/trap/loose: resolve heavy-touch vs control vs lose using firstTouch/composure/pressure/fatigue/bounce; update BallClaimControl/BallKickGround.
-- [ ] Set pieces & restarts polish: corner/goal-kick/throw-in routines with 1s delay, kick/passing options, positioning.
-- [ ] Event logging hooks per touch/pass/shot for replay/debug.
+### M4 – 이벤트/룰
+- [ ] 땅볼 패스 에러 모델(passGround, 압박, 피로, 거리) → 착지/도착/바운스 샘플
+- [ ] 롭/크로스 모델(passLong, 행타임/정점) + 헤딩 윈도우
+- [ ] 퍼스트터치/트랩/루즈볼: firstTouch/composure/압박/피로/바운스 기반
+- [ ] 세트피스/재시작 개선: 코너/골킥/스로인, 1초 대기, 킥 옵션/포지셔닝
+- [ ] 이벤트 로그 훅(터치/패스/슛)
 
-### M5 – Spatial/Tactical Systems & Debug UI
-- [ ] Space grid overlay + support anchors visualization; role/tactic-biased target selection (width/line/tempo).
-- [ ] Vision/perception overlays (cones, lane blocks), intent arrows, ball landing markers.
-- [ ] Simple control panel to tweak tactics live; start/pause/reset with seed.
+### M5 – 공간/전술 UI
+- [ ] 공간 그리드/앵커 오버레이, 전술(폭/라인/템포) 기반 타깃 선택
+- [ ] 시야/레인 차단, 의도/볼 착지 마커 오버레이
+- [ ] 전술 튜닝 패널, 시드 설정(고정 vs auto) 포함
 
-### M6 – Determinism, Logging, Testing, Packaging
-- [ ] Determinism checks: twin-seed runs, replay validation; unit tests for space grid, decision filters, RNG.
-- [ ] Structured logging/tracing for AI decisions and event sampling (toggleable).
-- [ ] Packaging/build notes, run scripts, and third-party license notice (raylib/raygui).
+### M6 – 결정론/로그/패키징
+- [ ] 결정론 체크: 이중 시드 실행, 리플레이 검증, 공간/결정 필터/RNG 유닛 테스트
+- [ ] 시드 처리: 고정 시드 vs `auto` 시간 시드, 플레이어별 RNG 파생(구현됨, 테스트 필요)
+- [ ] 의사결정/이벤트 로깅 토글
+- [ ] 패키징/빌드 안내, 스크립트, 서드파티 라이선스 표기
