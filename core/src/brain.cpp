@@ -319,6 +319,44 @@ void BrainChaseBall::Think(Player& player, const WorldState& world, const GroupC
     const auto& tctx = ctx.team[teamIndex];
 
     Vec3 target = ctx.ballPos;
+    const bool ownsBall = (world.ball.mode == BallMode::Controlled && world.ball.ownerPlayerId == player.id);
+    const bool isGK = (player.role == "GK");
+    // 루즈볼/패스 수신: 모든 선수 공통 인터셉트 (거리 반비례, 적극성으로 확장)
+    if (!ownsBall && (world.ball.mode == BallMode::FreeGround || world.ball.mode == BallMode::FreeAir))
+    {
+        float dx = world.ball.pos.x - player.state.position.x;
+        float dz = world.ball.pos.z - player.state.position.z;
+        float d2 = dx * dx + dz * dz;
+        float reach = 2.0f + player.stats.anticipation * 4.0f + player.stats.aggression * 1.5f;
+        if (isGK) reach += player.stats.keeping * 2.0f;
+        float reach2 = reach * reach;
+        if (d2 < reach2 * (1.0f + player.stats.aggression * 0.4f))  // 적극성이 높으면 먼 거리도 시도
+        {
+            target = world.ball.pos;
+            float dist = std::sqrt(std::max(d2, 1e-6f));
+            float distNorm = std::clamp(dist / reach, 0.0f, 1.2f);
+            float intentScale = std::clamp(1.0f - distNorm * distNorm, 0.1f, 1.0f);  // 거리 제곱에 반비례
+            intentScale *= 0.6f + player.stats.aggression * 0.5f;  // 적극성으로 의지 증가
+            player.intent.targetPos = target;
+            player.intent.desiredSpeed01 = std::clamp(0.4f + intentScale, 0.4f, 1.0f);
+            player.intent.action = RequestedAction::None;
+            player.intent.faceDir = {0, 0, 0};
+            if (d2 < 0.7f * 0.7f)
+            {
+                std::uniform_real_distribution<float> uni(0.0f, 1.0f);
+                float grabChance = std::clamp((player.stats.firstTouch * 0.7f + player.stats.keeping * 0.5f) * intentScale, 0.0f, 1.0f);
+                if (uni(player.rng) < grabChance)
+                {
+                    BallClaimControl(const_cast<BallState&>(world.ball),
+                                     player.id,
+                                     player.teamIndex,
+                                     static_cast<int>(world.clock.timeSeconds * 60.0f),
+                                     world.ball.pos);
+                }
+            }
+            return;
+        }
+    }
     // If teammate controls the ball, hold a support distance instead of crowding.
     if (world.ball.mode == BallMode::Controlled && world.ball.ownerPlayerId != player.id)
     {
@@ -420,6 +458,50 @@ void BrainSimplePossession::Think(Player& player, const WorldState& world, const
     }
     if (ownsBall)
     {
+        // GK 전용: 드리블/슛 대신 안전 패스/클리어 우선
+        if (isGK)
+        {
+            float bestDist = std::numeric_limits<float>::max();
+            Vec3 bestPos{};
+            int bestId = -1;
+            // 가까운 아군(CB/FB 우선) 찾기
+            for (const auto& mate : world.players)
+            {
+                if (mate.teamIndex != teamIndex || mate.id == player.id) continue;
+                if (!(mate.role == "CDF" || mate.role == "LB" || mate.role == "RB" || mate.role == "CDM")) continue;
+                float dx = mate.state.position.x - player.state.position.x;
+                float dz = mate.state.position.z - player.state.position.z;
+                float d2 = dx * dx + dz * dz;
+                if (d2 < 4.0f * 4.0f || d2 > 40.0f * 40.0f) continue;
+                float d = std::sqrt(d2);
+                if (d < bestDist)
+                {
+                    bestDist = d;
+                    bestPos = mate.state.position;
+                    bestId = mate.id;
+                }
+            }
+            if (bestId >= 0)
+            {
+                action = RequestedAction::Pass;
+                target = bestPos;
+                speed01 = 0.25f;
+            }
+            else
+            {
+                // 없으면 터치라인 쪽으로 걷어냄
+                action = RequestedAction::Clear;
+                float sideZ = (teamIndex == 0) ? ctx.pitchHeight * 0.2f : ctx.pitchHeight * 0.8f;
+                target = {player.state.position.x + ((teamIndex == 0) ? 18.0f : -18.0f), 0.0f, sideZ};
+                speed01 = 0.2f;
+            }
+            player.intent.targetPos = target;
+            player.intent.desiredSpeed01 = speed01;
+            player.intent.action = action;
+            player.intent.faceDir = {0, 0, 0};
+            return;
+        }
+
         // Use cached decision to reduce jitter.
         if (now < player.state.nextDecisionTime && player.state.cachedAction != RequestedAction::None)
         {
@@ -890,10 +972,11 @@ void TickPlayerWithBrain(Player& player,
     float ballDist = std::sqrt(ballDx * ballDx + ballDz * ballDz);
     float urgency = (ballDist < 8.0f) ? 0.12f : (ballDist < 15.0f ? 0.18f : 0.25f);
     float offset = (player.id % 5) * 0.02f;  // spread decision ticks
+    float react = std::clamp(0.6f + player.stats.agility * 0.8f, 0.6f, 1.4f);  // 민첩 높을수록 더 자주 갱신
     if (now >= player.state.nextDecisionTime)
     {
         brain.Think(player, world, ctx, dtSeconds);
-        player.state.nextDecisionTime = now + urgency + offset;
+        player.state.nextDecisionTime = now + (urgency + offset) / react;
     }
     // Movement consumes the last intent (updated or reused).
     movement.Tick(player, world, dtSeconds);

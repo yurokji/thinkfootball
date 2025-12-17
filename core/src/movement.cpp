@@ -134,6 +134,7 @@ void MovementArcade::Tick(Player& player, const WorldState& world, float dtSecon
     float angleToMove = WrapAngle(desiredHeading - player.state.facingRadians);
     float angleAbs = std::fabs(angleToMove);
     float turnSkill = 0.6f + player.stats.control * 0.4f; // 컨트롤이 좋을수록 회전·감속 페널티 완화
+    float agility = std::clamp(player.stats.agility, 0.0f, 1.0f);
     if (angleAbs > (3.1415926535f * 0.5f))
     {
         desiredSpeed = 0.0f;
@@ -144,7 +145,9 @@ void MovementArcade::Tick(Player& player, const WorldState& world, float dtSecon
         desiredSpeed *= std::clamp(forwardFactor, 0.0f, 1.0f);
         // 추가 감속: 각도가 클수록 속도 더 줄임.
         float angleDamp = 1.0f - (angleAbs / (3.1415926535f * 0.5f)) * 0.7f; // up to -70%
-        desiredSpeed *= std::clamp(angleDamp, 0.3f, 1.0f);
+        // 민첩/가속이 좋으면 급선회 페널티 완화
+        float agilityBoost = 0.2f + agility * 0.4f;
+        desiredSpeed *= std::clamp(angleDamp + agilityBoost * 0.2f, 0.3f, 1.0f);
         // 컨트롤 좋은 선수는 감속 페널티 완화.
         desiredSpeed *= turnSkill;
     }
@@ -157,6 +160,8 @@ void MovementArcade::Tick(Player& player, const WorldState& world, float dtSecon
     // 회전 중 가속 제한: 정면 정렬이 낮고 컨트롤이 낮을수록 덜 급하게 방향 전환
     float align = std::max(0.0f, std::cos(angleAbs));
     float accelScale = std::clamp(0.3f + align * turnSkill, 0.3f, 1.0f);
+    // 민첩/순가속이 좋은 선수는 방향 전환 후 재가속을 더 빠르게
+    accelScale *= std::clamp(0.7f + agility * 0.6f + player.stats.accel * 0.3f, 0.7f, 1.4f);
     maxDelta *= accelScale;
     if (deltaLen > maxDelta && deltaLen > 1e-5f)
     {

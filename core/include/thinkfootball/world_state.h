@@ -26,6 +26,9 @@ struct PlayerStats
     float composure{0.5f};
     float endurance{0.5f};   // breath capacity: slows drain, speeds recovery
     float keeping{0.5f};     // GK handling/interception skill
+    float agility{0.5f};     // 반응 속도/전환
+    float firstTouch{0.5f};   // 컨트롤/트래핑 능력
+    float anticipation{0.5f}; // 루즈볼/패스 라인을 읽고 움직이는 능력
     // Behavioral tendencies (0..1): weigh decisions toward certain actions.
     float aggression{0.5f};
     float passPref{0.5f};

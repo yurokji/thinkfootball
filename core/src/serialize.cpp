@@ -87,6 +87,9 @@ std::string ToJson(const WorldState& world)
                              {"composure", p.stats.composure},
                              {"endurance", p.stats.endurance},
                              {"keeping", p.stats.keeping},
+                             {"agility", p.stats.agility},
+                             {"firstTouch", p.stats.firstTouch},
+                             {"anticipation", p.stats.anticipation},
                              {"aggression", p.stats.aggression},
                              {"passPref", p.stats.passPref},
                              {"shootPref", p.stats.shootPref},
@@ -185,6 +188,9 @@ WorldState FromJson(const std::string& jsonStr)
         p.stats.composure = s.value("composure", 0.5f);
         p.stats.endurance = s.value("endurance", 0.5f);
         p.stats.keeping = s.value("keeping", 0.5f);
+        p.stats.agility = s.value("agility", 0.5f);
+        p.stats.firstTouch = s.value("firstTouch", 0.5f);
+        p.stats.anticipation = s.value("anticipation", 0.5f);
         p.stats.aggression = s.value("aggression", 0.5f);
         p.stats.passPref = s.value("passPref", 0.5f);
         p.stats.shootPref = s.value("shootPref", 0.5f);
