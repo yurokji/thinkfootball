@@ -400,6 +400,28 @@ int main()
                     else if (player.intent.action == tf::RequestedAction::Pass)
                     {
                         tf::Vec3 target = ClampToPitch(player.intent.targetPos);
+
+                        // Re-validate pass target: must have a teammate near the intended spot.
+                        int mateId = -1;
+                        float bestD2 = 25.0f; // within 5m
+                        for (const auto& mate : world.players)
+                        {
+                            if (mate.teamIndex != player.teamIndex || mate.id == player.id) continue;
+                            float dx = mate.state.position.x - target.x;
+                            float dz = mate.state.position.z - target.z;
+                            float d2 = dx * dx + dz * dz;
+                            if (d2 < bestD2)
+                            {
+                                bestD2 = d2;
+                                mateId = mate.id;
+                            }
+                        }
+                        if (mateId == -1) {
+                            // No valid receiver nearby; keep dribbling.
+                            player.intent.action = tf::RequestedAction::None;
+                            target = player.state.position;
+                        }
+
                         tf::Vec3 dir{target.x - player.state.position.x, 0.0f, target.z - player.state.position.z};
                         float len = std::sqrt(dir.x * dir.x + dir.z * dir.z);
                         if (len > 1e-3f)

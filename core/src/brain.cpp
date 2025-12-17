@@ -4,6 +4,7 @@
 #include <cmath>
 #include <limits>
 #include <random>
+#include <unordered_map>
 #include <vector>
 
 namespace tf
@@ -44,9 +45,8 @@ inline Vec3 RotateY(const Vec3& v, float ang)
 VisionInfo CollectVision(const Player& viewer, const WorldState& world, float rangeBase, float halfAngleRad)
 {
     VisionInfo info{};
-    float breath = std::clamp(viewer.condition.breath, 0.0f, 1.0f);
-    float range = rangeBase * (0.6f + viewer.stats.awareness * 0.8f) * (0.55f + 0.45f * breath);
-    float halfAng = halfAngleRad * (0.65f + 0.55f * breath);  // winded -> narrower vision
+    float range = rangeBase * (0.6f + viewer.stats.awareness * 0.8f);
+    float halfAng = halfAngleRad;  // keep stable to reduce visual jitter
     float dirX = std::sin(viewer.state.facingRadians);
     float dirZ = std::cos(viewer.state.facingRadians);
 
@@ -72,6 +72,14 @@ VisionInfo CollectVision(const Player& viewer, const WorldState& world, float ra
     }
     return info;
 }
+
+struct DribbleHold
+{
+    float untilTime{-1.0f};
+    Vec3 dir{};
+};
+
+static std::unordered_map<int, DribbleHold> g_dribbleHold;
 }  // namespace
 
 void TeamBrain::ThinkTeam(WorldState& /*world*/, float /*dtSeconds*/)
@@ -226,7 +234,28 @@ void BrainSimplePossession::Think(Player& player, const WorldState& world, const
             speed01 *= 0.45f;  // slow down more near threat
         }
 
-        // Choose safer dribble direction among a few candidates with minimal turn.
+        // If we recently chose a dribble direction, reuse it for a short hold to prevent oscillation.
+        const float now = world.clock.timeSeconds;
+        auto itHold = g_dribbleHold.find(player.id);
+        if (itHold != g_dribbleHold.end() && now < itHold->second.untilTime)
+        {
+            Vec3 nd = itHold->second.dir;
+            target = {player.state.position.x + nd.x * 8.0f, 0.0f, player.state.position.z + nd.z * 8.0f};
+            target.z = std::clamp(target.z, lineMargin, ctx.pitchHeight - lineMargin);
+            // Spread away from nearest ally to keep lanes open.
+            if (nearestAllyDist < 8.0f && nearestAllyDist > 1e-3f)
+            {
+                Vec3 perp{-nd.z, 0.0f, nd.x};
+                float side = nearestAllyVec.x * perp.x + nearestAllyVec.z * perp.z;
+                float sign = (side > 0.0f) ? -1.0f : 1.0f;
+                float push = (8.0f - nearestAllyDist) / 8.0f * 3.0f;
+                target.x += perp.x * sign * push;
+                target.z += perp.z * sign * push;
+            }
+        }
+        else
+        {
+            // Choose safer dribble direction among a few candidates with minimal turn.
         float baseAng = 0.6f;  // ~34deg
         float maxAng = 1.0f;   // ~57deg
         std::vector<Vec3> dirs = {
@@ -291,9 +320,6 @@ void BrainSimplePossession::Think(Player& player, const WorldState& world, const
                 linePenalty += (futureZ - (ctx.pitchHeight - lineMargin)) * 3.0f;
 
             float score = (nd.x * fwdDir.x + nd.z * fwdDir.z) * 1.5f - anglePenalty - threatPenalty - corridorPenalty - linePenalty;
-            // Mild per-player randomness to avoid identical choices.
-            float randJitter = Hash01(static_cast<uint32_t>(player.id), static_cast<uint32_t>(world.ball.touchSeq), 101);
-            score += (randJitter - 0.5f) * 1.0f;
             score -= (1.0f - breath) * 6.0f;  // low breath hurts dribble confidence
             if (score > bestScore)
             {
@@ -301,18 +327,20 @@ void BrainSimplePossession::Think(Player& player, const WorldState& world, const
                 bestDir = nd;
             }
         }
-        target = {player.state.position.x + bestDir.x * 8.0f, 0.0f, player.state.position.z + bestDir.z * 8.0f};
-        // Clamp target inside touchlines margin.
-        target.z = std::clamp(target.z, lineMargin, ctx.pitchHeight - lineMargin);
-        // Spread away from nearest ally to keep lanes open.
-        if (nearestAllyDist < 8.0f && nearestAllyDist > 1e-3f)
-        {
-            Vec3 perp{-bestDir.z, 0.0f, bestDir.x};
-            float side = nearestAllyVec.x * perp.x + nearestAllyVec.z * perp.z;
-            float sign = (side > 0.0f) ? -1.0f : 1.0f;
-            float push = (8.0f - nearestAllyDist) / 8.0f * 3.0f;
-            target.x += perp.x * sign * push;
-            target.z += perp.z * sign * push;
+            target = {player.state.position.x + bestDir.x * 8.0f, 0.0f, player.state.position.z + bestDir.z * 8.0f};
+            // Clamp target inside touchlines margin.
+            target.z = std::clamp(target.z, lineMargin, ctx.pitchHeight - lineMargin);
+            // Spread away from nearest ally to keep lanes open.
+            if (nearestAllyDist < 8.0f && nearestAllyDist > 1e-3f)
+            {
+                Vec3 perp{-bestDir.z, 0.0f, bestDir.x};
+                float side = nearestAllyVec.x * perp.x + nearestAllyVec.z * perp.z;
+                float sign = (side > 0.0f) ? -1.0f : 1.0f;
+                float push = (8.0f - nearestAllyDist) / 8.0f * 3.0f;
+                target.x += perp.x * sign * push;
+                target.z += perp.z * sign * push;
+            }
+            g_dribbleHold[player.id] = DribbleHold{now + 0.25f, bestDir};
         }
 
         // Shoot if close enough to goal.
@@ -342,27 +370,27 @@ void BrainSimplePossession::Think(Player& player, const WorldState& world, const
             float dz = mate.state.position.z - player.state.position.z;
             float dist2 = dx * dx + dz * dz;
             if (dist2 < 3.0f * 3.0f) continue;            // avoid ultra short passes
-            if (dist2 > 55.0f * 55.0f) continue;          // allow a bit longer
+            if (dist2 > 35.0f * 35.0f) continue;          // keep passes reasonable
             float dist = std::sqrt(dist2);
 
             float forward = (teamIndex == 0) ? dx : -dx;
 
-            // Require mate to be within vision cone.
+            // Require mate to be within vision cone (looser) and slightly longer range.
             float dirX = std::sin(player.state.facingRadians);
             float dirZ = std::cos(player.state.facingRadians);
             float dot = (dirX * dx + dirZ * dz) / std::max(dist, 1e-3f);
             float ang = std::acos(std::clamp(dot, -1.0f, 1.0f));
-            float halfAng = 40.0f * (kPi / 180.0f) * (0.65f + 0.55f * breath);
-            float visRange = 20.0f * (0.6f + player.stats.awareness * 0.8f) * (0.55f + 0.45f * breath);
+            float halfAng = 80.0f * (kPi / 180.0f);  // wide, stable cone for passing
+            float visRange = 30.0f * (0.6f + player.stats.awareness * 0.8f);
             if (ang > halfAng || dist > visRange) continue;
 
             float laneCenter = ctx.pitchHeight * 0.5f;
             float widthPenalty = std::abs(mate.state.position.z - laneCenter) / (ctx.pitchHeight * 0.5f);
             // Penalize short passes and lanes crowded by opponents.
-            float score = (50.0f - dist) * 1.0f + forward * 0.5f - widthPenalty * 0.1f;
-            if (forward <= 0.0f) score *= 0.8f;  // prefer forward, but allow back with penalty
-            if (mate.id == lastPasser) score -= 8.0f;    // discourage immediate ping-pong but allow escape
-            if (dist < 10.0f) score -= (10.0f - dist) * 0.5f; // soften penalty for short outlet
+            float score = (50.0f - dist) * 0.8f + forward * 0.6f - widthPenalty * 0.05f;
+            if (forward <= 0.0f) score *= 0.9f;  // mild penalty for back passes, still allowed
+            if (mate.id == lastPasser) score -= 3.0f;    // small discouragement only
+            if (dist < 8.0f) score -= (8.0f - dist) * 0.2f; // allow short outlet more
             // Opponent clearance along pass lane
             float minGap = 99.f;
             for (const auto& opp : world.players)
@@ -379,12 +407,10 @@ void BrainSimplePossession::Think(Player& player, const WorldState& world, const
                 float gap = std::sqrt(gx * gx + gz * gz);
                 minGap = std::min(minGap, gap);
             }
-            if (minGap < 5.0f) score -= (5.0f - minGap) * 2.0f; // less strict so passes still chosen
+            if (minGap < 4.0f) score -= (4.0f - minGap) * 1.2f; // less strict so passes still chosen
 
-            // Winded players want to offload + randomize choices per player/time.
+            // Winded players want to offload.
             score += (1.0f - breath) * 18.0f;
-            float randJitter = Hash01(static_cast<uint32_t>(player.id), static_cast<uint32_t>(mate.id), static_cast<uint32_t>(world.ball.touchSeq + world.clock.timeSeconds * 10.0f));
-            score += (randJitter - 0.5f) * 8.0f;
 
             if (forward > 0.3f && score > bestForwardScore)
             {
@@ -401,20 +427,24 @@ void BrainSimplePossession::Think(Player& player, const WorldState& world, const
         }
 
         // Prefer a forward option if available; otherwise fallback to best overall in vision.
-        bool underPressure = (vision.nearestOppDist < 8.0f);
-        if (bestForwardId >= 0 && action != RequestedAction::Shoot && underPressure)
+        bool underPressure = (vision.nearestOppDist < 9.0f);
+        float randPass = Hash01(static_cast<uint32_t>(player.id), static_cast<uint32_t>(world.ball.touchSeq), 333);
+
+        // Require minimally viable scores before passing to avoid punting into nowhere.
+        float minScore = underPressure ? 0.5f : 0.0f;
+        bool canForward = (bestForwardId >= 0 && bestForwardScore > minScore);
+        bool canAny = (bestAnyId >= 0 && bestAnyScore > minScore);
+
+        float chanceForward = underPressure ? 0.95f : 0.6f;
+        float chanceAny = underPressure ? 0.9f : 0.65f;
+
+        if (canForward && action != RequestedAction::Shoot && (underPressure || breath < 0.7f || randPass < chanceForward))
         {
             action = RequestedAction::Pass;
             target = bestForwardPos;
-            speed01 = 0.3f;  // slow down a bit while preparing pass
+            speed01 = 0.35f;  // prep pass
         }
-        else if (bestForwardId >= 0 && action != RequestedAction::Shoot)
-        {
-            action = RequestedAction::Pass;
-            target = bestForwardPos;
-            speed01 = 0.4f;
-        }
-        else if (bestAnyId >= 0 && action != RequestedAction::Shoot)
+        else if (canAny && action != RequestedAction::Shoot && (underPressure || breath < 0.7f || randPass < chanceAny))
         {
             action = RequestedAction::Pass;
             target = bestAnyPos;

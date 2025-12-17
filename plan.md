@@ -36,9 +36,16 @@ Scope: build a strategic, non-player-controlled football game where the player s
 - [x] Simple goal detection + scoreboard; ball reset on score.
 - [x] Pass/shot handling on client (ground kick, shooter/pass blocker to avoid instant reclaim).
 - [x] Forward-only pass heuristic + near-goal shooting trigger.
-- [ ] Add vision cone (beam) per player (~10m, stat-scaled), use to adjust dribble/pass targets; debug overlay toggle for vision cones.
-- [ ] Add perception (ray-cast/sector) to adjust dribble target and slow down near allies/opponents.
-- [ ] Collision/contact: on close approach lose ball or transfer ownership → set ball to FREE_GROUND with small knock-out velocity.
+- [x] Vision cones rendered/toggled; per-player awareness scaling.
+- [x] Collision/contact: on close approach probabilistic steal/loose ball knock-out.
+
+#### M3.2 – Toward Systemic AI (in progress)
+- [ ] Decision lock cadence: cache action/target for ~0.25–0.3s to prevent frame-to-frame jitter; store per-player decision timer.
+- [ ] Space grid (10×6) weighting: open space, forward value, ally/enemy density, touchline safety → suggest support targets.
+- [ ] Explicit pass/dribble feasibility checks (distance bounds, lane clearance, line safety, pass cooldown) and dribble-risk checks (corridor width, line risk, low breath/pressure).
+- [ ] Selection rules: pass if feasible & dribble is risky; else compare scores; fallback escape when both risky.
+- [ ] Execution re-validate: receiver still present within 5m; otherwise cancel pass.
+- [ ] Role/tactics modulation: use team width/line/tempo to bias support positions and pressures.
 
 ### M4 – Outcome Sampling (Events)
 - [ ] Ground pass model: intent target + error model (distance, passer passGround, pressure, fatigue) → actual landing, arrival time, bounce intensity.
