@@ -14,11 +14,54 @@ namespace
 {
 constexpr float kPi = 3.1415926535f;
 
+// fwd decl
+inline float Length2D(float x, float z);
+inline Vec3 RotateY(const Vec3& v, float ang);
+
 struct VisionInfo
 {
     float nearestOppDist{std::numeric_limits<float>::max()};
     Vec3 nearestOppVec{};
 };
+
+struct FacingDecision
+{
+    Vec3 dir{};
+    float lockTime{0.0f};
+};
+
+// 스캔 방향/빈도 설정: 움직일 땐 몸 방향, 정지/저속일 땐 곁눈질 허용
+static void UpdateScan(Player& p, float now)
+{
+    float speed = Length2D(p.state.velocity.x, p.state.velocity.z);
+    Vec3 face{std::sin(p.state.facingRadians), 0.0f, std::cos(p.state.facingRadians)};
+    bool moving = speed > 0.5f;
+    // 기본 콘 각: 30~45도, 어웨어니스 높을수록 넓음
+    float baseHalf = 30.0f * (kPi / 180.0f);
+    float half = baseHalf * (0.8f + p.stats.awareness * 0.6f);
+    if (!moving && speed < 0.1f)
+    {
+        // 정지 시 뒤쪽까지 약간 허용 (곁눈질)
+        half = std::min(half + 0.4f, 1.6f);  // 최대 약 90도
+    }
+    if (moving)
+    {
+        p.state.scanDir = face;
+        p.state.scanHalfAngle = half;
+        p.state.nextScanTime = now + 0.6f;
+        return;
+    }
+    if (now >= p.state.nextScanTime || Length2D(p.state.scanDir.x, p.state.scanDir.z) < 1e-4f)
+    {
+        std::uniform_real_distribution<float> uni(-half, half);
+        float jitter = uni(p.rng);
+        Vec3 s = RotateY(face, jitter);
+        p.state.scanDir = s;
+        p.state.scanHalfAngle = half;
+        float period = std::clamp(0.8f - p.stats.awareness * 0.5f, 0.3f, 0.9f);
+        p.state.nextScanTime = now + period;
+    }
+}
 
 inline float Length2D(float x, float z)
 {
@@ -48,8 +91,14 @@ VisionInfo CollectVision(const Player& viewer, const WorldState& world, float ra
     VisionInfo info{};
     float range = rangeBase * (0.6f + viewer.stats.awareness * 0.8f);
     float halfAng = halfAngleRad;  // keep stable to reduce visual jitter
-    float dirX = std::sin(viewer.state.facingRadians);
-    float dirZ = std::cos(viewer.state.facingRadians);
+    // 스캔 방향이 유효하면 그것을 사용, 없으면 facing 사용
+    Vec3 scan = viewer.state.scanDir;
+    if (Length2D(scan.x, scan.z) < 1e-4f)
+    {
+        scan = {std::sin(viewer.state.facingRadians), 0.0f, std::cos(viewer.state.facingRadians)};
+    }
+    float dirX = scan.x;
+    float dirZ = scan.z;
 
     for (const auto& p : world.players)
     {
@@ -165,7 +214,6 @@ bool IsPassFeasible(const Player& passer, const Vec3& target, const WorldState& 
     if (target.z < -margin || target.z > pitchWidth + margin) return false;
 
     // 레인 간섭: 패스 선분에서 상대까지의 최소 거리
-    float dist = std::sqrt(dist2);
     float minGap = 99.f;
     for (const auto& opp : world.players)
     {
@@ -220,6 +268,26 @@ void TeamBrain::ThinkTeam(WorldState& /*world*/, float /*dtSeconds*/)
     // Placeholder: team-level tactics updates can be added here.
 }
 
+// 가장 가까운 상대를 찾되 시야와 무관하게 위치 기반으로 계산.
+static void NearestOpponent(const Player& self, const WorldState& world, Vec3& outDir, float& outDist)
+{
+    outDist = std::numeric_limits<float>::max();
+    outDir = {0, 0, 0};
+    for (const auto& opp : world.players)
+    {
+        if (opp.teamIndex == self.teamIndex) continue;
+        float dx = opp.state.position.x - self.state.position.x;
+        float dz = opp.state.position.z - self.state.position.z;
+        float d2 = dx * dx + dz * dz;
+        if (d2 < outDist * outDist)
+        {
+            float d = std::sqrt(std::max(d2, 1e-6f));
+            outDist = d;
+            outDir = {dx / d, 0.0f, dz / d};
+        }
+    }
+}
+
 void TeamBrain::ApplyTactics(const WorldState& world, GroupContext& ctx)
 {
     const float minBand = ctx.pitchHeight * 0.05f;
@@ -270,7 +338,6 @@ void BrainChaseBall::Think(Player& player, const WorldState& world, const GroupC
                 Vec3 fwd = (len > 1e-3f) ? Vec3{toGoal.x / len, 0.0f, toGoal.z / len} : Vec3{(teamIndex == 0) ? 1.0f : -1.0f, 0.0f, 0.0f};
                 Vec3 perp{-fwd.z, 0.0f, fwd.x};
                 float sideSign = (Hash01(static_cast<uint32_t>(player.id), static_cast<uint32_t>(world.ball.touchSeq), 77) < 0.5f) ? 1.0f : -1.0f;
-                float supportDist = 14.0f;      // keep 14m away
                 float lateral = 6.0f * sideSign; // spread sideways
                 target.x = owner->state.position.x - fwd.x * 4.0f + perp.x * lateral;
                 target.z = owner->state.position.z - fwd.z * 4.0f + perp.z * lateral;
@@ -332,7 +399,8 @@ void BrainSimplePossession::Think(Player& player, const WorldState& world, const
     Vec3 goalPos{(teamIndex == 0) ? ctx.pitchWidth : 0.0f, 0.0f, ctx.pitchHeight * 0.5f};
     RequestedAction action = RequestedAction::None;
     float speed01 = std::clamp(tctx.speedScale * tctx.pressScale, 0.0f, 1.0f);
-    VisionInfo vision = CollectVision(player, world, 20.0f, 40.0f * (kPi / 180.0f));
+    UpdateScan(player, now);
+    VisionInfo vision = CollectVision(player, world, 20.0f, player.state.scanHalfAngle);
     float nearestAllyDist = std::numeric_limits<float>::max();
     Vec3 nearestAllyVec{};
     Vec3 nearestAllyPos{};
@@ -573,26 +641,39 @@ void BrainSimplePossession::Think(Player& player, const WorldState& world, const
         }
 
         // Prefer a forward option if available; otherwise fallback to best overall in vision.
-        bool underPressure = (vision.nearestOppDist < 9.0f);
+        // 압박/위험 정도를 세분화해 패스 성향을 높인다.
+        int oppClose = 0;
+        for (const auto& opp : world.players)
+        {
+            if (opp.teamIndex == teamIndex) continue;
+            float dx = opp.state.position.x - player.state.position.x;
+            float dz = opp.state.position.z - player.state.position.z;
+            if (dx * dx + dz * dz < 10.0f * 10.0f) oppClose++;
+        }
+
+        bool underPressure = (vision.nearestOppDist < 9.0f || oppClose >= 2);
         float randPass = Hash01(static_cast<uint32_t>(player.id), static_cast<uint32_t>(world.ball.touchSeq), 333);
 
         // Require minimally viable scores before passing to avoid punting into nowhere.
-        float minScore = underPressure ? 0.5f : 0.0f;
+        float minScore = underPressure ? -1.0f : -0.5f;
         bool canForward = (bestForwardId >= 0 && bestForwardScore > minScore);
         bool canAny = (bestAnyId >= 0 && bestAnyScore > minScore);
 
-        float chanceForward = underPressure ? 0.95f : 0.6f;
-        float chanceAny = underPressure ? 0.9f : 0.65f;
+        float chanceForward = underPressure ? 0.97f : 0.75f;
+        float chanceAny = underPressure ? 0.95f : 0.7f;
+
+        // 강제 패스 모드: 드리블 리스크 높거나 호흡 낮거나 압박 많으면 우선 패스.
+        bool forcePass = underPressure || breath < 0.55f || IsDribbleRisky(player, world, ctx.pitchHeight);
 
         bool passChosen = false;
-        if (canForward && action != RequestedAction::Shoot && (underPressure || breath < 0.7f || randPass < chanceForward))
+        if (canForward && action != RequestedAction::Shoot && (forcePass || randPass < chanceForward))
         {
             action = RequestedAction::Pass;
             target = bestForwardPos;
             speed01 = 0.35f;  // prep pass
             passChosen = true;
         }
-        else if (canAny && action != RequestedAction::Shoot && (underPressure || breath < 0.7f || randPass < chanceAny))
+        else if (canAny && action != RequestedAction::Shoot && (forcePass || randPass < chanceAny))
         {
             action = RequestedAction::Pass;
             target = bestAnyPos;
@@ -614,6 +695,14 @@ void BrainSimplePossession::Think(Player& player, const WorldState& world, const
             action = RequestedAction::None;
             target = player.state.position;
             speed01 = 0.1f;
+        }
+        // 패스가 선택되지 않았지만 압박이 심하면 가장 가까운 안전 아군에게라도 짧게 준다.
+        if (!passChosen && underPressure && bestAnyId >= 0)
+        {
+            action = RequestedAction::Pass;
+            target = bestAnyPos;
+            speed01 = 0.35f;
+            passChosen = true;
         }
 
         // Cache decision to reduce jitter for a short window.
@@ -641,16 +730,16 @@ void BrainSimplePossession::Think(Player& player, const WorldState& world, const
             if (owner && owner->teamIndex == teamIndex && owner->id != player.id)
             {
                 // Support spacing: stay 10–18m away, lateral offset to open lanes.
-                Vec3 toGoal{(teamIndex == 0 ? ctx.pitchWidth : 0.0f) - owner->state.position.x, 0.0f, ctx.pitchHeight * 0.5f - owner->state.position.z};
-                float len = Length2D(toGoal.x, toGoal.z);
-                Vec3 fwd = (len > 1e-3f) ? Vec3{toGoal.x / len, 0.0f, toGoal.z / len} : Vec3{(teamIndex == 0) ? 1.0f : -1.0f, 0.0f, 0.0f};
-                Vec3 perp{-fwd.z, 0.0f, fwd.x};
-                float sideSign = (player.id % 2 == 0) ? 1.0f : -1.0f;
-                float distBack = 6.0f;
-                float supportDist = 12.0f + (player.id % 3) * 2.0f;  // 12–16m
-                target.x = owner->state.position.x - fwd.x * distBack + perp.x * (sideSign * supportDist * 0.5f);
-                target.z = owner->state.position.z - fwd.z * distBack + perp.z * (sideSign * supportDist * 0.5f);
-                speed01 = 0.35f;
+            Vec3 toGoal{(teamIndex == 0 ? ctx.pitchWidth : 0.0f) - owner->state.position.x, 0.0f, ctx.pitchHeight * 0.5f - owner->state.position.z};
+            float len = Length2D(toGoal.x, toGoal.z);
+            Vec3 fwd = (len > 1e-3f) ? Vec3{toGoal.x / len, 0.0f, toGoal.z / len} : Vec3{(teamIndex == 0) ? 1.0f : -1.0f, 0.0f, 0.0f};
+            Vec3 perp{-fwd.z, 0.0f, fwd.x};
+            float sideSign = (player.id % 2 == 0) ? 1.0f : -1.0f;
+            float distBack = 6.0f;
+            float supportDist = 12.0f + (player.id % 3) * 2.0f;  // 12–16m
+            target.x = owner->state.position.x - fwd.x * distBack + perp.x * (sideSign * supportDist * 0.5f);
+            target.z = owner->state.position.z - fwd.z * distBack + perp.z * (sideSign * supportDist * 0.5f);
+            speed01 = 0.35f;
             }
             else
             {
@@ -703,10 +792,62 @@ void BrainSimplePossession::Think(Player& player, const WorldState& world, const
         }
     }
 
+    // ---- Facing selection: 정보 획득 + 실행 방향을 분리, 짧은 lock으로 떨림 완화 ----
+    FacingDecision fd{};
+    // 우선 기존 lock 유지
+    // now already computed above
+    Vec3 locked = player.state.cachedFaceDir;
+    if (now < player.state.faceLockUntil && (locked.x * locked.x + locked.z * locked.z) > 1e-4f)
+    {
+        fd.dir = locked;
+    }
+    else
+    {
+        Vec3 toBall{world.ball.pos.x - player.state.position.x, 0.0f, world.ball.pos.z - player.state.position.z};
+        float ballLen = Length2D(toBall.x, toBall.z);
+        Vec3 ballDir = (ballLen > 1e-4f) ? Vec3{toBall.x / ballLen, 0.0f, toBall.z / ballLen} : Vec3{0, 0, 0};
+
+        Vec3 oppDir;
+        float oppDist;
+        NearestOpponent(player, world, oppDir, oppDist);
+
+        Vec3 desiredFace{0, 0, 0};
+        // 온볼: 선택 행동 타깃을 우선 본다.
+        if (action == RequestedAction::Pass || action == RequestedAction::Shoot)
+        {
+            Vec3 faceVec{target.x - player.state.position.x, 0.0f, target.z - player.state.position.z};
+            float len = Length2D(faceVec.x, faceVec.z);
+            if (len > 1e-4f) desiredFace = {faceVec.x / len, 0.0f, faceVec.z / len};
+        }
+        if ((desiredFace.x * desiredFace.x + desiredFace.z * desiredFace.z) < 1e-5f && ballLen > 1e-4f)
+        {
+            desiredFace = ballDir;
+        }
+        // 오프볼이거나 위에서 못 정했다면, 최근 위협/볼을 본다.
+        if ((desiredFace.x * desiredFace.x + desiredFace.z * desiredFace.z) < 1e-5f && oppDist < 15.0f)
+        {
+            desiredFace = oppDir;
+        }
+        // 그래도 없으면 진행/앵커 방향을 천천히 본다.
+        if ((desiredFace.x * desiredFace.x + desiredFace.z * desiredFace.z) < 1e-5f)
+        {
+            Vec3 toTarget{target.x - player.state.position.x, 0.0f, target.z - player.state.position.z};
+            float len = Length2D(toTarget.x, toTarget.z);
+            if (len > 1e-4f) desiredFace = {toTarget.x / len, 0.0f, toTarget.z / len};
+        }
+        float lock = std::clamp(0.6f - player.stats.awareness * 0.3f, 0.25f, 0.7f);  // 시야 좋을수록 더 자주 스캔
+        // 압박 많으면 더 짧게 스캔
+        if (oppDist < 8.0f) lock *= 0.7f;
+        fd.dir = desiredFace;
+        fd.lockTime = now + lock;
+        player.state.cachedFaceDir = fd.dir;
+        player.state.faceLockUntil = fd.lockTime;
+    }
+
     player.intent.targetPos = target;
     player.intent.desiredSpeed01 = speed01;
     player.intent.action = action;
-    player.intent.faceDir = {0, 0, 0};
+    player.intent.faceDir = fd.dir;
 }
 
 void TickPlayerWithBrain(Player& player,
@@ -716,11 +857,17 @@ void TickPlayerWithBrain(Player& player,
                          PlayerBrain& brain,
                          float dtSeconds)
 {
-    // Rate-limit decisions to reduce jitter: reuse intent until nextDecisionTime.
-    if (world.clock.timeSeconds >= player.state.nextDecisionTime)
+    // Rate-limit decisions with per-player offset and urgency by ball proximity.
+    float now = world.clock.timeSeconds;
+    float ballDx = world.ball.pos.x - player.state.position.x;
+    float ballDz = world.ball.pos.z - player.state.position.z;
+    float ballDist = std::sqrt(ballDx * ballDx + ballDz * ballDz);
+    float urgency = (ballDist < 8.0f) ? 0.12f : (ballDist < 15.0f ? 0.18f : 0.25f);
+    float offset = (player.id % 5) * 0.02f;  // spread decision ticks
+    if (now >= player.state.nextDecisionTime)
     {
         brain.Think(player, world, ctx, dtSeconds);
-        player.state.nextDecisionTime = world.clock.timeSeconds + 0.25f;  // ~4 Hz
+        player.state.nextDecisionTime = now + urgency + offset;
     }
     // Movement consumes the last intent (updated or reused).
     movement.Tick(player, world, dtSeconds);

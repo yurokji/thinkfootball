@@ -85,16 +85,48 @@ void MovementArcade::Tick(Player& player, const WorldState& world, float dtSecon
     }
 
     // Turn body toward desired direction with limited turn rate (slower when fast).
+    float ballDx = world.ball.pos.x - player.state.position.x;
+    float ballDz = world.ball.pos.z - player.state.position.z;
+    float ballDist = std::sqrt(ballDx * ballDx + ballDz * ballDz);
+
     float desiredHeading = player.state.facingRadians;
-    if (dist > 1e-3f)
+    // 브레인에서 명시한 시야 방향을 우선 적용한다.
+    if (LengthXZ(player.intent.faceDir) > 1e-3f)
+    {
+        desiredHeading = std::atan2(player.intent.faceDir.x, player.intent.faceDir.z);
+    }
+    else if (dist > 1e-3f)
     {
         desiredHeading = std::atan2(dir.x, dir.z);
     }
-    float angleDiff = WrapAngle(desiredHeading - player.state.facingRadians);
+    else if (!ownsBall && ballDist > 0.5f)
+    {
+        // 정지 상태에서는 공 쪽을 바라보게 하여 터치라인 쳐다보는 비현실 행동 억제.
+        desiredHeading = std::atan2(ballDx, ballDz);
+    }
+    bool idle = (desiredSpeed < 0.05f && LengthXZ(player.state.velocity) < 0.15f && dist < 0.5f);
+    bool urgentFacing = ownsBall || ballDist < 8.0f;
+    if (idle && !urgentFacing)
+    {
+        desiredHeading = player.state.facingRadians;  // 정지 시 집단 회전 방지
+    }
+    float angleDiff = 0.0f;
+    if (!(idle && !urgentFacing))
+    {
+        angleDiff = WrapAngle(desiredHeading - player.state.facingRadians);
+    }
     float currentSpeed = LengthXZ(player.state.velocity);
     float speedRatio = std::clamp(currentSpeed / std::max(maxSpeed, 1e-3f), 0.0f, 1.0f);
     float turnScale = 0.5f + (1.0f - speedRatio) * 0.5f;  // fast일수록 회전 한계 축소
     float maxTurn = turnRateRadPerSec * dtSeconds * turnScale;
+    // 전방 목표가 멀수록(거리 제곱) 민감도 감소 → 집단 고개 돌림 완화.
+    float faceDamp = urgentFacing ? 1.0f : 1.0f / (1.0f + dist * dist * 0.08f);
+    faceDamp = std::clamp(faceDamp, 0.2f, 1.0f);
+    maxTurn *= faceDamp;
+    if (!urgentFacing && desiredSpeed < 0.2f)
+    {
+        maxTurn *= 0.4f;  // 멈춰있는 선수 집단 회전 억제
+    }
     float appliedTurn = std::clamp(angleDiff, -maxTurn, maxTurn);
     player.state.facingRadians = WrapAngle(player.state.facingRadians + appliedTurn);
 

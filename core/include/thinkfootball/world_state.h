@@ -68,6 +68,13 @@ struct PlayerState
     float nextDecisionTime{0.0f};
     Vec3 cachedTarget{};
     RequestedAction cachedAction{RequestedAction::None};
+    // Vision/facing 캐시: 일정 시간 유지해서 집단 회전 억제 + 정보 유지
+    Vec3 cachedFaceDir{};
+    float faceLockUntil{0.0f};
+    // 시야 스캔: 몸(facing)과 별도로 곁눈질할 방향/범위
+    Vec3 scanDir{};
+    float scanHalfAngle{0.6f};   // radians
+    float nextScanTime{0.0f};
 };
 
 struct Player

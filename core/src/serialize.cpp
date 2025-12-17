@@ -101,13 +101,18 @@ std::string ToJson(const WorldState& world)
                              {"faceDir", p.intent.faceDir},
                              {"action", static_cast<int>(p.intent.action)}}},
                            {"state",
-                            {{"position", p.state.position},
-                             {"velocity", p.state.velocity},
-                             {"facingRadians", p.state.facingRadians},
-                             {"hasBall", p.state.hasBall},
-                             {"nextDecisionTime", p.state.nextDecisionTime},
-                             {"cachedTarget", p.state.cachedTarget},
-                             {"cachedAction", static_cast<int>(p.state.cachedAction)}}}});
+                           {{"position", p.state.position},
+                            {"velocity", p.state.velocity},
+                            {"facingRadians", p.state.facingRadians},
+                            {"hasBall", p.state.hasBall},
+                            {"nextDecisionTime", p.state.nextDecisionTime},
+                            {"cachedTarget", p.state.cachedTarget},
+                            {"cachedAction", static_cast<int>(p.state.cachedAction)},
+                            {"cachedFaceDir", p.state.cachedFaceDir},
+                            {"faceLockUntil", p.state.faceLockUntil},
+                            {"scanDir", p.state.scanDir},
+                            {"scanHalfAngle", p.state.scanHalfAngle},
+                            {"nextScanTime", p.state.nextScanTime}}}});
     }
     j["players"] = players;
     j["rngSeed"] = world.rngSeed;
@@ -203,6 +208,11 @@ WorldState FromJson(const std::string& jsonStr)
         p.state.nextDecisionTime = st.value("nextDecisionTime", 0.0f);
         p.state.cachedTarget = st.value("cachedTarget", Vec3{});
         p.state.cachedAction = static_cast<RequestedAction>(st.value("cachedAction", 0));
+        p.state.cachedFaceDir = st.value("cachedFaceDir", Vec3{});
+        p.state.faceLockUntil = st.value("faceLockUntil", 0.0f);
+        p.state.scanDir = st.value("scanDir", Vec3{});
+        p.state.scanHalfAngle = st.value("scanHalfAngle", 0.6f);
+        p.state.nextScanTime = st.value("nextScanTime", 0.0f);
 
         world.players.push_back(p);
     }
