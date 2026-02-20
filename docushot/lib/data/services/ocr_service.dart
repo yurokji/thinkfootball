@@ -50,7 +50,7 @@ class OcrService {
     TextRecognitionScript.korean: '한국어',
     TextRecognitionScript.japanese: '日本語',
     TextRecognitionScript.chinese: '中文',
-    TextRecognitionScript.devanagari: 'हिन्दी',
+    TextRecognitionScript.devanagiri: 'हिन्दी',
   };
 
   static TextRecognitionScript scriptFromName(String name) {
@@ -58,7 +58,7 @@ class OcrService {
       case 'korean': return TextRecognitionScript.korean;
       case 'japanese': return TextRecognitionScript.japanese;
       case 'chinese': return TextRecognitionScript.chinese;
-      case 'devanagari': return TextRecognitionScript.devanagari;
+      case 'devanagari': return TextRecognitionScript.devanagiri;
       default: return TextRecognitionScript.latin;
     }
   }
@@ -68,7 +68,7 @@ class OcrService {
       case TextRecognitionScript.korean: return 'korean';
       case TextRecognitionScript.japanese: return 'japanese';
       case TextRecognitionScript.chinese: return 'chinese';
-      case TextRecognitionScript.devanagari: return 'devanagari';
+      case TextRecognitionScript.devanagiri: return 'devanagari';
       default: return 'latin';
     }
   }
