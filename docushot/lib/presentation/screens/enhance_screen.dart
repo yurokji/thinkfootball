@@ -8,14 +8,16 @@ class EnhanceScreen extends StatefulWidget {
   final bool isManualMode;
   final Function(String) onDone;
   final Function(int)? onApplyToAll;
+  final int initialFilter;
 
   const EnhanceScreen({
-    super.key, 
+    super.key,
     required this.imagePath,
     required this.originalPath,
     required this.isManualMode,
     required this.onDone,
     this.onApplyToAll,
+    this.initialFilter = 0,
   });
 
   @override
@@ -31,6 +33,12 @@ class _EnhanceScreenState extends State<EnhanceScreen> {
   void initState() {
     super.initState();
     _currentDisplayPath = widget.imagePath;
+    // Auto-apply recommended filter from document type config
+    if (widget.initialFilter > 0) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _applyFilter(widget.initialFilter);
+      });
+    }
   }
 
   Future<void> _applyFilter(int filterType) async {

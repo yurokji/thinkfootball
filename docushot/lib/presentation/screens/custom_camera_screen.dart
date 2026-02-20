@@ -12,6 +12,7 @@ import 'package:docushot/core/image/image_processor.dart';
 import 'package:sensors_plus/sensors_plus.dart';
 import 'package:edge_detection/edge_detection.dart';
 import 'package:image/image.dart' as img;
+import 'package:docushot/core/models/document_type.dart';
 
 class CustomCameraScreen extends ConsumerStatefulWidget {
   const CustomCameraScreen({super.key});
@@ -249,9 +250,10 @@ class _CustomCameraScreenState extends ConsumerState<CustomCameraScreen> with Si
                if (mounted) {
                  setState(() {
                    _capturedImages.add({
-                     'path': croppedPath, 
+                     'path': croppedPath,
                      'originalPath': savedPath,
-                     'corners': corners
+                     'corners': corners,
+                     'docType': _docType,
                    });
                  });
                }
@@ -290,6 +292,7 @@ class _CustomCameraScreenState extends ConsumerState<CustomCameraScreen> with Si
                'path': savedPath,
                'originalPath': savedPath,
                'corners': normalizedCorners,
+               'docType': _docType,
              });
            });
          }
@@ -320,6 +323,7 @@ class _CustomCameraScreenState extends ConsumerState<CustomCameraScreen> with Si
 
       // Open enhance for the first image; onApplyToAll applies to all cropped images
       final firstItem = _capturedImages.first;
+      final config = getDocTypeConfig(docTypeFromIndex(_docType));
       String? enhancedPath;
       await Navigator.push(
         context,
@@ -328,6 +332,7 @@ class _CustomCameraScreenState extends ConsumerState<CustomCameraScreen> with Si
             imagePath: firstItem['path'] as String,
             originalPath: firstItem['originalPath'] as String,
             isManualMode: false,
+            initialFilter: config.defaultFilter,
             onDone: (path) => enhancedPath = path,
             onApplyToAll: (type) async {
               for (var item in _capturedImages) {
