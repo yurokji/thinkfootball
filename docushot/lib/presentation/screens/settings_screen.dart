@@ -6,6 +6,8 @@ import 'package:docushot/presentation/providers/settings_provider.dart';
 import 'package:docushot/presentation/providers/document_provider.dart';
 import 'package:docushot/presentation/screens/onboarding_screen.dart';
 import 'package:docushot/data/services/ocr_service.dart';
+import 'package:docushot/presentation/providers/premium_provider.dart';
+import 'package:docushot/presentation/screens/paywall_screen.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -161,6 +163,20 @@ class SettingsScreen extends ConsumerWidget {
                   const SnackBar(content: Text('Backup failed')),
                 );
               }
+            },
+          ),
+
+          _buildSectionHeader(context, 'Subscription'),
+          ListTile(
+            leading: Icon(
+              ref.watch(premiumProvider).isPremium ? Icons.verified : Icons.workspace_premium,
+              color: Colors.amber,
+            ),
+            title: Text(ref.watch(premiumProvider).isPremium ? 'Premium Active' : 'Upgrade to Premium'),
+            subtitle: Text(ref.watch(premiumProvider).isPremium ? 'All features unlocked' : 'Unlock all features'),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+            onTap: () {
+              Navigator.push(context, MaterialPageRoute(builder: (_) => const PaywallScreen()));
             },
           ),
 
