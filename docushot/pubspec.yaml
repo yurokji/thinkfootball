@@ -4,7 +4,7 @@ publish_to: "none"
 version: 1.0.0+1
 
 environment:
-  sdk: ">=3.2.0 <4.0.0"
+  sdk: ">=3.7.0 <4.0.0"
 
 dependencies:
   flutter:
@@ -13,8 +13,7 @@ dependencies:
     sdk: flutter
 
   # State Management
-  flutter_riverpod: ^2.5.1 # Using a known stable version roughly compatible with Hive/Flutter
-  riverpod_annotation: ^2.3.5
+  flutter_riverpod: ^3.2.1
 
   # Local Database
   hive: ^2.2.3
@@ -26,34 +25,34 @@ dependencies:
 
   # Utilities
   pdf: ^3.10.0
-  share_plus: ^10.0.0
+  share_plus: ^12.0.1
   gal: ^2.3.0
-  archive: ^3.6.1
+  archive: ^4.0.9
   path_provider: ^2.1.2
   uuid: ^4.3.3
   intl: ^0.20.2
 
   # UI
   reorderable_grid_view: ^2.2.5
-  flutter_slidable: ^3.1.0
+  flutter_slidable: ^4.0.3
   cupertino_icons: ^1.0.6
   async: ^2.13.0
   image_picker: ^1.2.1
-  camera: ^0.10.5
-  image_cropper: ^8.0.2
+  camera: ^0.11.4
+  image_cropper: ^11.0.0
   image: ^4.1.7 # For pixel-level manipulation (filters)
   edge_detection:
     path: packages/edge_detection
-  sensors_plus: ^5.0.0
+  sensors_plus: ^7.0.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^3.0.0
+  flutter_lints: ^6.0.0
   build_runner: ^2.4.8
   hive_generator: ^2.0.1
-  riverpod_generator: ^2.4.0
-  flutter_launcher_icons: ^0.13.1
+
+  flutter_launcher_icons: ^0.14.4
 
 flutter:
   generate: true

@@ -161,7 +161,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           IconButton(
             icon: const Icon(Icons.search),
             onPressed: () {
-              final docs = documentListAsync.valueOrNull ?? [];
+              final docs = documentListAsync.value ?? [];
               final repository = ref.read(documentRepositoryProvider);
               showSearch(
                 context: context,

@@ -39,14 +39,16 @@ class PremiumStatus {
   }
 }
 
-class PremiumNotifier extends StateNotifier<PremiumStatus> {
-  final Box _box;
+class PremiumNotifier extends Notifier<PremiumStatus> {
+  late final Box _box;
 
-  PremiumNotifier(this._box) : super(const PremiumStatus()) {
-    _load();
+  @override
+  PremiumStatus build() {
+    _box = Hive.box('settings');
+    return _loadFromBox();
   }
 
-  void _load() {
+  PremiumStatus _loadFromBox() {
     final tierName = _box.get('premiumTier', defaultValue: 'free') as String;
     final expiresStr = _box.get('premiumExpires') as String?;
 
@@ -55,14 +57,13 @@ class PremiumNotifier extends StateNotifier<PremiumStatus> {
 
     if (expiresStr != null) {
       expires = DateTime.tryParse(expiresStr);
-      // Check if expired
       if (expires != null && expires.isBefore(DateTime.now())) {
         tier = PremiumTier.free;
         _box.put('premiumTier', 'free');
       }
     }
 
-    state = PremiumStatus(tier: tier, expiresAt: expires);
+    return PremiumStatus(tier: tier, expiresAt: expires);
   }
 
   /// Call after successful purchase verification.
@@ -83,12 +84,9 @@ class PremiumNotifier extends StateNotifier<PremiumStatus> {
   /// Restore purchase (check with store).
   Future<void> restorePurchase() async {
     // TODO: Implement with in_app_purchase package
-    // final purchases = await InAppPurchase.instance.restorePurchases();
-    // Verify receipts and call activatePremium() if valid
   }
 }
 
-final premiumProvider = StateNotifierProvider<PremiumNotifier, PremiumStatus>((ref) {
-  final box = Hive.box('settings');
-  return PremiumNotifier(box);
-});
+final premiumProvider = NotifierProvider<PremiumNotifier, PremiumStatus>(
+  PremiumNotifier.new,
+);

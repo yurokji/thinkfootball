@@ -96,7 +96,7 @@ class _DetailScreenState extends ConsumerState<DetailScreen> {
              IconButton(
               icon: const Icon(Icons.share),
               onPressed: () async {
-                final allPages = ref.read(documentPagesProvider(widget.document.id)).valueOrNull ?? [];
+                final allPages = ref.read(documentPagesProvider(widget.document.id)).value ?? [];
                 final selectedPages = allPages.where((p) => selectedPageIds.contains(p.id)).toList();
                 if (selectedPages.isNotEmpty) {
                   final paths = selectedPages.map((p) => p.imagePath).toList();
@@ -164,7 +164,7 @@ class _DetailScreenState extends ConsumerState<DetailScreen> {
                     await controller.exportZip(widget.document.id);
                     break;
                   case 'images':
-                    final pages = ref.read(documentPagesProvider(widget.document.id)).valueOrNull ?? [];
+                    final pages = ref.read(documentPagesProvider(widget.document.id)).value ?? [];
                     if (pages.isNotEmpty) {
                       await controller.shareImages(pages.map((p) => p.imagePath).toList());
                     }

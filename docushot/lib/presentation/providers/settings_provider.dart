@@ -34,21 +34,23 @@ class AppSettings {
   }
 }
 
-class SettingsNotifier extends StateNotifier<AppSettings> {
-  final Box _box;
+class SettingsNotifier extends Notifier<AppSettings> {
+  late final Box _box;
 
-  SettingsNotifier(this._box) : super(const AppSettings()) {
-    _load();
+  @override
+  AppSettings build() {
+    _box = ref.watch(settingsBoxProvider);
+    return _loadFromBox();
   }
 
-  void _load() {
+  AppSettings _loadFromBox() {
     final themeName = _box.get('themeMode', defaultValue: 'dark') as String;
     final quality = _box.get('imageQuality', defaultValue: 'High') as String;
     final autoCrop = _box.get('autoCrop', defaultValue: true) as bool;
     final ocrLang = _box.get('ocrLanguage', defaultValue: 'latin') as String;
     final locale = _box.get('locale', defaultValue: 'en') as String;
 
-    state = AppSettings(
+    return AppSettings(
       themeMode: themeName == 'light' ? ThemeMode.light : (themeName == 'system' ? ThemeMode.system : ThemeMode.dark),
       imageQuality: quality,
       autoCrop: autoCrop,
@@ -88,7 +90,6 @@ final settingsBoxProvider = Provider<Box>((ref) {
   return Hive.box('settings');
 });
 
-final settingsProvider = StateNotifierProvider<SettingsNotifier, AppSettings>((ref) {
-  final box = ref.watch(settingsBoxProvider);
-  return SettingsNotifier(box);
-});
+final settingsProvider = NotifierProvider<SettingsNotifier, AppSettings>(
+  SettingsNotifier.new,
+);
