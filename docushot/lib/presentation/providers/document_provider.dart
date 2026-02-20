@@ -6,10 +6,7 @@ import 'package:docushot/data/models/page_model.dart';
 import 'package:docushot/data/repositories/document_repository.dart';
 import 'package:docushot/data/services/pdf_service.dart';
 import 'package:docushot/data/services/export_service.dart';
-import 'package:docushot/data/services/camera_service.dart'; 
-import 'package:docushot/data/services/scanner_service.dart'; // NEW
-import 'package:docushot/utils/test_image_generator.dart'; 
-import 'dart:io'; // NEW
+import 'package:docushot/data/services/scan_service.dart';
 import 'package:image_picker/image_picker.dart';
 
 // --- Dependencies ---
@@ -72,8 +69,7 @@ final documentPagesProvider = StreamProvider.family<List<PageModel>, String>((re
 
 final pdfServiceProvider = Provider<PdfService>((ref) => PdfService());
 final exportServiceProvider = Provider<ExportService>((ref) => ExportService());
-final cameraServiceProvider = Provider<CameraService>((ref) => CameraService());
-final scannerServiceProvider = Provider<ScannerService>((ref) => ScannerService()); // NEW
+final scanServiceProvider = Provider<ScanService>((ref) => ScanService());
 
 // --- Controller ---
 
@@ -81,13 +77,13 @@ class DocumentController {
   final DocumentRepository _repository;
   final PdfService _pdfService;
   final ExportService _exportService;
-  final CameraService _cameraService;
+  final ScanService _scanService;
 
   DocumentController(
-    this._repository, 
-    this._pdfService, 
+    this._repository,
+    this._pdfService,
     this._exportService,
-    this._cameraService,
+    this._scanService,
   );
 
   // Updated to accept richer data from Custom Camera (Map: 'path', 'originalPath')
@@ -225,6 +221,6 @@ final documentControllerProvider = Provider<DocumentController>((ref) {
     ref.watch(documentRepositoryProvider),
     ref.watch(pdfServiceProvider),
     ref.watch(exportServiceProvider),
-    ref.watch(cameraServiceProvider),
+    ref.watch(scanServiceProvider),
   );
 });
