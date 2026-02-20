@@ -5,7 +5,7 @@ import 'package:docushot/data/models/document_model.dart';
 import 'package:docushot/data/repositories/document_repository.dart';
 import 'package:docushot/presentation/providers/document_provider.dart';
 import 'package:docushot/presentation/screens/detail_screen.dart';
-import 'package:docushot/presentation/screens/custom_camera_screen.dart';
+import 'package:docushot/data/services/scan_service.dart';
 import 'package:docushot/presentation/widgets/document_list_tile.dart';
 import 'package:docushot/presentation/widgets/simple_settings_dialog.dart';
 
@@ -253,14 +253,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         icon: const Icon(Icons.camera_alt),
         label: const Text('Scan'),
         onPressed: () async {
-          // Launch Custom Camera
-          final result = await Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const CustomCameraScreen()),
-          );
+          // Launch ML Kit Document Scanner
+          final scanService = ref.read(scanServiceProvider);
+          final images = await scanService.scanDocuments();
 
-          if (result != null && result is List && result.isNotEmpty) {
-            final newDoc = await documentController.createDocument(initialImages: result);
+          if (images.isNotEmpty) {
+            final newDoc = await documentController.createDocument(initialImages: images);
             if (mounted) {
               Navigator.push(
                 context,
