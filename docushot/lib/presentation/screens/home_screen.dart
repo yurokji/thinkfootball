@@ -1,6 +1,8 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:docushot/data/models/document_model.dart';
+import 'package:docushot/data/repositories/document_repository.dart';
 import 'package:docushot/presentation/providers/document_provider.dart';
 import 'package:docushot/presentation/screens/detail_screen.dart';
 import 'package:docushot/presentation/screens/custom_camera_screen.dart';
@@ -159,7 +161,21 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           IconButton(
             icon: const Icon(Icons.search),
             onPressed: () {
-              // Placeholder Search
+              final docs = documentListAsync.valueOrNull ?? [];
+              final repository = ref.read(documentRepositoryProvider);
+              showSearch(
+                context: context,
+                delegate: _DocumentSearchDelegate(
+                  documents: docs,
+                  repository: repository,
+                  onSelect: (doc) {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => DetailScreen(document: doc)),
+                    );
+                  },
+                ),
+              );
             },
           ),
 
@@ -245,6 +261,125 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         },
         child: const Icon(Icons.camera_alt),
       ) : null,
+    );
+  }
+}
+
+// --- Search Delegate ---
+
+class _DocumentSearchDelegate extends SearchDelegate<DocumentModel?> {
+  final List<DocumentModel> documents;
+  final DocumentRepository repository;
+  final void Function(DocumentModel doc) onSelect;
+
+  _DocumentSearchDelegate({
+    required this.documents,
+    required this.repository,
+    required this.onSelect,
+  }) : super(searchFieldLabel: 'Search documents...');
+
+  List<DocumentModel> _filter(String query) {
+    if (query.isEmpty) return documents;
+    final lower = query.toLowerCase();
+    return documents.where((doc) {
+      // Match title
+      if (doc.title.toLowerCase().contains(lower)) return true;
+      // Match OCR text in pages
+      final pages = repository.getPagesForDocument(doc.id);
+      for (var page in pages) {
+        if (page.ocrText != null && page.ocrText!.toLowerCase().contains(lower)) {
+          return true;
+        }
+      }
+      return false;
+    }).toList();
+  }
+
+  @override
+  List<Widget>? buildActions(BuildContext context) {
+    return [
+      if (query.isNotEmpty)
+        IconButton(
+          icon: const Icon(Icons.clear),
+          onPressed: () => query = '',
+        ),
+    ];
+  }
+
+  @override
+  Widget? buildLeading(BuildContext context) {
+    return IconButton(
+      icon: const Icon(Icons.arrow_back),
+      onPressed: () => close(context, null),
+    );
+  }
+
+  @override
+  Widget buildResults(BuildContext context) => _buildList(context);
+
+  @override
+  Widget buildSuggestions(BuildContext context) => _buildList(context);
+
+  Widget _buildList(BuildContext context) {
+    final results = _filter(query);
+    if (results.isEmpty) {
+      return Center(
+        child: Text('No documents found', style: TextStyle(color: Colors.grey[500])),
+      );
+    }
+    return ListView.separated(
+      padding: const EdgeInsets.all(16),
+      itemCount: results.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 8),
+      itemBuilder: (context, index) {
+        final doc = results[index];
+        final pageCount = doc.pageIds.length;
+        // Find OCR match snippet
+        String? ocrSnippet;
+        if (query.isNotEmpty) {
+          final lower = query.toLowerCase();
+          final pages = repository.getPagesForDocument(doc.id);
+          for (var page in pages) {
+            if (page.ocrText != null && page.ocrText!.toLowerCase().contains(lower)) {
+              final idx = page.ocrText!.toLowerCase().indexOf(lower);
+              final start = (idx - 30).clamp(0, page.ocrText!.length);
+              final end = (idx + query.length + 30).clamp(0, page.ocrText!.length);
+              ocrSnippet = '...${page.ocrText!.substring(start, end)}...';
+              break;
+            }
+          }
+        }
+        return ListTile(
+          leading: ClipRRect(
+            borderRadius: BorderRadius.circular(6),
+            child: SizedBox(
+              width: 48,
+              height: 48,
+              child: doc.thumbnailPath != null && File(doc.thumbnailPath!).existsSync()
+                  ? Image.file(File(doc.thumbnailPath!), fit: BoxFit.cover)
+                  : Container(color: Colors.grey[300], child: const Icon(Icons.description, color: Colors.grey)),
+            ),
+          ),
+          title: Text(doc.title),
+          subtitle: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('$pageCount page${pageCount == 1 ? '' : 's'}', style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+              if (ocrSnippet != null)
+                Text(
+                  ocrSnippet,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 11, color: Colors.blue[300], fontStyle: FontStyle.italic),
+                ),
+            ],
+          ),
+          onTap: () {
+            close(context, doc);
+            onSelect(doc);
+          },
+        );
+      },
     );
   }
 }
