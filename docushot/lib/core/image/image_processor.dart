@@ -49,6 +49,23 @@ class ImageProcessor {
     return newPath;
   }
 
+  /// Apply custom brightness and contrast adjustments.
+  /// brightness: 0.5 to 2.0 (1.0 = no change)
+  /// contrast: 0.5 to 2.0 (1.0 = no change)
+  static Future<String> applyAdjustments(String path, {double brightness = 1.0, double contrast = 1.0}) async {
+    final bytes = await File(path).readAsBytes();
+    img.Image? original = img.decodeImage(bytes);
+    if (original == null) return path;
+
+    img.Image processed = img.adjustColor(original, brightness: brightness, contrast: contrast);
+
+    final ts = DateTime.now().millisecondsSinceEpoch;
+    final String newPath = path.replaceAll('.jpg', '_adj_$ts.jpg');
+    final encoded = img.encodeJpg(processed, quality: 90);
+    await File(newPath).writeAsBytes(encoded);
+    return newPath;
+  }
+
   /// Apply filter to all ScanResults in batch, updating each result's path.
   static Future<void> applyFilterToAll(List<ScanResult> results, int filterType) async {
     for (var result in results) {
