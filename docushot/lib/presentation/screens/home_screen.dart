@@ -199,9 +199,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                   const Icon(Icons.folder_open, size: 60, color: Colors.grey),
-                   const SizedBox(height: 16),
-                   Text('No documents yet', style: TextStyle(color: Colors.grey[500])),
+                   Container(
+                     width: 100,
+                     height: 100,
+                     decoration: BoxDecoration(
+                       shape: BoxShape.circle,
+                       color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
+                     ),
+                     child: Icon(Icons.document_scanner, size: 48, color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.5)),
+                   ),
+                   const SizedBox(height: 24),
+                   Text('No documents yet', style: TextStyle(color: Colors.grey[500], fontSize: 16)),
+                   const SizedBox(height: 8),
+                   Text('Tap the camera button to scan', style: TextStyle(color: Colors.grey[600], fontSize: 13)),
                 ],
               ),
             );
@@ -239,7 +249,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (err, stack) => Center(child: Text('Error: $err')),
       ),
-      floatingActionButton: !isSelectionMode ? FloatingActionButton(
+      floatingActionButton: !isSelectionMode ? FloatingActionButton.extended(
+        icon: const Icon(Icons.camera_alt),
+        label: const Text('Scan'),
         onPressed: () async {
           // Launch Custom Camera
           final result = await Navigator.push(
@@ -259,7 +271,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             }
           }
         },
-        child: const Icon(Icons.camera_alt),
       ) : null,
     );
   }

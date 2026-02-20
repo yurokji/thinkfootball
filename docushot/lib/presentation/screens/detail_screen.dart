@@ -202,7 +202,18 @@ class _DetailScreenState extends ConsumerState<DetailScreen> {
             child: pagesAsync.when(
               data: (pages) {
                 if (pages.isEmpty) {
-                   return Center(child: Text('No pages yet. Tap + to add.', style: TextStyle(color: Colors.grey[500])));
+                   return Center(
+                     child: Column(
+                       mainAxisSize: MainAxisSize.min,
+                       children: [
+                         Icon(Icons.note_add, size: 48, color: Colors.grey[600]),
+                         const SizedBox(height: 16),
+                         Text('No pages yet', style: TextStyle(color: Colors.grey[500], fontSize: 15)),
+                         const SizedBox(height: 6),
+                         Text('Use camera or gallery to add pages', style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+                       ],
+                     ),
+                   );
                 }
                 return ReorderableGridView.count(
                   crossAxisCount: 2,
