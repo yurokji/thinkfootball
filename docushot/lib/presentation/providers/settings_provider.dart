@@ -6,22 +6,26 @@ class AppSettings {
   final ThemeMode themeMode;
   final String imageQuality; // 'High', 'Medium'
   final bool autoCrop;
+  final String ocrLanguage; // 'latin', 'korean', 'japanese', 'chinese', 'devanagari'
 
   const AppSettings({
     this.themeMode = ThemeMode.dark,
     this.imageQuality = 'High',
     this.autoCrop = true,
+    this.ocrLanguage = 'latin',
   });
 
   AppSettings copyWith({
     ThemeMode? themeMode,
     String? imageQuality,
     bool? autoCrop,
+    String? ocrLanguage,
   }) {
     return AppSettings(
       themeMode: themeMode ?? this.themeMode,
       imageQuality: imageQuality ?? this.imageQuality,
       autoCrop: autoCrop ?? this.autoCrop,
+      ocrLanguage: ocrLanguage ?? this.ocrLanguage,
     );
   }
 }
@@ -37,11 +41,13 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
     final themeName = _box.get('themeMode', defaultValue: 'dark') as String;
     final quality = _box.get('imageQuality', defaultValue: 'High') as String;
     final autoCrop = _box.get('autoCrop', defaultValue: true) as bool;
+    final ocrLang = _box.get('ocrLanguage', defaultValue: 'latin') as String;
 
     state = AppSettings(
       themeMode: themeName == 'light' ? ThemeMode.light : (themeName == 'system' ? ThemeMode.system : ThemeMode.dark),
       imageQuality: quality,
       autoCrop: autoCrop,
+      ocrLanguage: ocrLang,
     );
   }
 
@@ -59,6 +65,11 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
   void setAutoCrop(bool value) {
     _box.put('autoCrop', value);
     state = state.copyWith(autoCrop: value);
+  }
+
+  void setOcrLanguage(String language) {
+    _box.put('ocrLanguage', language);
+    state = state.copyWith(ocrLanguage: language);
   }
 }
 

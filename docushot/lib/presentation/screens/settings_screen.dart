@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:docushot/presentation/providers/settings_provider.dart';
+import 'package:docushot/data/services/ocr_service.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -63,6 +64,40 @@ class SettingsScreen extends ConsumerWidget {
             value: settings.autoCrop,
             onChanged: (v) => notifier.setAutoCrop(v),
             activeColor: Theme.of(context).colorScheme.primary,
+          ),
+
+          _buildSectionHeader(context, 'OCR'),
+          ListTile(
+            title: const Text('OCR Language'),
+            subtitle: Text(OcrService.supportedScripts[OcrService.scriptFromName(settings.ocrLanguage)] ?? 'English / Latin'),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+            onTap: () {
+              showDialog(
+                context: context,
+                builder: (ctx) => SimpleDialog(
+                  title: const Text('OCR Language'),
+                  children: OcrService.supportedScripts.entries.map((entry) {
+                    final name = OcrService.scriptToName(entry.key);
+                    return SimpleDialogOption(
+                      onPressed: () {
+                        notifier.setOcrLanguage(name);
+                        Navigator.pop(ctx);
+                      },
+                      child: Row(
+                        children: [
+                          if (settings.ocrLanguage == name)
+                            Icon(Icons.check, size: 18, color: Theme.of(context).colorScheme.primary)
+                          else
+                            const SizedBox(width: 18),
+                          const SizedBox(width: 12),
+                          Text(entry.value),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                ),
+              );
+            },
           ),
 
           _buildSectionHeader(context, 'About'),
