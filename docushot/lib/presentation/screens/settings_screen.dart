@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:hive/hive.dart';
 import 'package:docushot/presentation/providers/settings_provider.dart';
+import 'package:docushot/presentation/screens/onboarding_screen.dart';
 import 'package:docushot/data/services/ocr_service.dart';
 
 class SettingsScreen extends ConsumerWidget {
@@ -104,6 +106,19 @@ class SettingsScreen extends ConsumerWidget {
           const ListTile(
             title: Text('Version'),
             subtitle: Text('1.0.0'),
+          ),
+          ListTile(
+            title: const Text('Show Tutorial'),
+            subtitle: const Text('View the onboarding guide again'),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+            onTap: () {
+              Hive.box('settings').put('onboarding_complete', false);
+              Navigator.pushAndRemoveUntil(
+                context,
+                MaterialPageRoute(builder: (_) => const OnboardingScreen()),
+                (_) => false,
+              );
+            },
           ),
         ],
       ),
