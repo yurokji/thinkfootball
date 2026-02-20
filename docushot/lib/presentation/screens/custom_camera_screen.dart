@@ -46,6 +46,11 @@ class _CustomCameraScreenState extends ConsumerState<CustomCameraScreen> with Si
   double _lastX = 0, _lastY = 0, _lastZ = 0;
   bool _isStable = false;
 
+  // Edge Detection Preview
+  List<Offset>? _previewCorners; // Normalized 0..1 corners for overlay
+  Timer? _edgeDetectTimer;
+  bool _isDetectingEdges = false;
+
   @override
   void initState() {
     super.initState();
@@ -66,7 +71,8 @@ class _CustomCameraScreenState extends ConsumerState<CustomCameraScreen> with Si
   void dispose() {
     _controller?.dispose();
     _animController.dispose();
-    _stopAutoCaptureLoop(); // Ensure stream is cancelled
+    _stopAutoCaptureLoop();
+    _stopEdgeDetectLoop();
     super.dispose();
   }
 
@@ -87,10 +93,68 @@ class _CustomCameraScreenState extends ConsumerState<CustomCameraScreen> with Si
         );
 
         await _controller!.initialize();
-        if (mounted) setState(() {});
+        if (mounted) {
+          setState(() {});
+          _startEdgeDetectLoop();
+        }
       }
     } catch (e) {
       debugPrint('Camera init error: $e');
+    }
+  }
+
+  void _startEdgeDetectLoop() {
+    _edgeDetectTimer?.cancel();
+    _edgeDetectTimer = Timer.periodic(const Duration(milliseconds: 1000), (_) {
+      _detectEdgesPreview();
+    });
+  }
+
+  void _stopEdgeDetectLoop() {
+    _edgeDetectTimer?.cancel();
+  }
+
+  Future<void> _detectEdgesPreview() async {
+    if (_controller == null || !_controller!.value.isInitialized) return;
+    if (_isDetectingEdges || _isTakingPicture) return;
+
+    _isDetectingEdges = true;
+    String? tempPath;
+
+    try {
+      // Take a quick snapshot for edge detection
+      final XFile preview = await _controller!.takePicture();
+      final dir = await getTemporaryDirectory();
+      tempPath = '${dir.path}/_edge_preview.jpg';
+      await preview.saveTo(tempPath);
+
+      final corners = await EdgeDetection.detectEdgesNoUI(tempPath);
+
+      if (mounted) {
+        if (corners != null && corners.length == 4) {
+          // Corners are pixel coordinates - normalize to 0..1
+          final decoded = await decodeImageFromList(File(tempPath).readAsBytesSync());
+          final w = decoded.width.toDouble();
+          final h = decoded.height.toDouble();
+          setState(() {
+            _previewCorners = corners.map((o) => Offset(
+              (o.dx / w).clamp(0.0, 1.0),
+              (o.dy / h).clamp(0.0, 1.0),
+            )).toList();
+          });
+        } else {
+          setState(() => _previewCorners = null);
+        }
+      }
+    } catch (e) {
+      debugPrint('Edge preview error: $e');
+      if (mounted) setState(() => _previewCorners = null);
+    } finally {
+      _isDetectingEdges = false;
+      // Clean up temp file
+      if (tempPath != null) {
+        try { File(tempPath).deleteSync(); } catch (_) {}
+      }
     }
   }
 
@@ -201,7 +265,8 @@ class _CustomCameraScreenState extends ConsumerState<CustomCameraScreen> with Si
   Future<void> _takePicture() async {
     if (_controller == null || !_controller!.value.isInitialized || _isTakingPicture) return;
 
-    setState(() { _isTakingPicture = true; });
+    _stopEdgeDetectLoop();
+    setState(() { _isTakingPicture = true; _previewCorners = null; });
 
     try {
       final XFile image = await _controller!.takePicture();
@@ -302,7 +367,10 @@ class _CustomCameraScreenState extends ConsumerState<CustomCameraScreen> with Si
     } catch (e) {
       debugPrint('Capture error: $e');
     } finally {
-      if (mounted) setState(() { _isTakingPicture = false; });
+      if (mounted) {
+        setState(() { _isTakingPicture = false; });
+        _startEdgeDetectLoop();
+      }
     }
   }
 
@@ -423,7 +491,7 @@ class _CustomCameraScreenState extends ConsumerState<CustomCameraScreen> with Si
           // 1. Camera Preview
           SizedBox.expand(child: CameraPreview(_controller!)),
           
-          // 2. AI Overlay (Pulsing)
+          // 2. AI Overlay (Pulsing brackets)
           Positioned.fill(
              child: AnimatedBuilder(
                animation: _animValue,
@@ -434,6 +502,21 @@ class _CustomCameraScreenState extends ConsumerState<CustomCameraScreen> with Si
                },
              ),
           ),
+
+          // 2b. Edge Detection Overlay (detected document polygon)
+          if (_previewCorners != null && _previewCorners!.length == 4)
+            Positioned.fill(
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  return CustomPaint(
+                    painter: _EdgeOverlayPainter(
+                      corners: _previewCorners!,
+                      previewSize: Size(constraints.maxWidth, constraints.maxHeight),
+                    ),
+                  );
+                },
+              ),
+            ),
 
           // 3. Top Bar
           Positioned(
@@ -699,4 +782,52 @@ class _AIOverlayPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _AIOverlayPainter oldDelegate) => oldDelegate.pulse != pulse;
+}
+
+class _EdgeOverlayPainter extends CustomPainter {
+  final List<Offset> corners; // Normalized 0..1 corners
+  final Size previewSize;
+
+  _EdgeOverlayPainter({required this.corners, required this.previewSize});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (corners.length != 4) return;
+
+    final paint = Paint()
+      ..color = Colors.greenAccent.withValues(alpha: 0.7)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.5
+      ..strokeJoin = StrokeJoin.round;
+
+    final fillPaint = Paint()
+      ..color = Colors.greenAccent.withValues(alpha: 0.08)
+      ..style = PaintingStyle.fill;
+
+    // Map normalized corners (0..1) to widget coordinates
+    final mapped = corners.map((c) => Offset(c.dx * size.width, c.dy * size.height)).toList();
+
+    final path = Path()
+      ..moveTo(mapped[0].dx, mapped[0].dy)
+      ..lineTo(mapped[1].dx, mapped[1].dy)
+      ..lineTo(mapped[2].dx, mapped[2].dy)
+      ..lineTo(mapped[3].dx, mapped[3].dy)
+      ..close();
+
+    canvas.drawPath(path, fillPaint);
+    canvas.drawPath(path, paint);
+
+    // Draw corner dots
+    final dotPaint = Paint()
+      ..color = Colors.greenAccent
+      ..style = PaintingStyle.fill;
+    for (var p in mapped) {
+      canvas.drawCircle(p, 5, dotPaint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _EdgeOverlayPainter oldDelegate) {
+    return oldDelegate.corners != corners;
+  }
 }
