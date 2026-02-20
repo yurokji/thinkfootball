@@ -7,6 +7,7 @@ import 'package:docushot/data/repositories/document_repository.dart';
 import 'package:docushot/data/services/pdf_service.dart';
 import 'package:docushot/data/services/export_service.dart';
 import 'package:docushot/data/services/scan_service.dart';
+import 'package:docushot/data/services/ocr_service.dart';
 import 'package:image_picker/image_picker.dart';
 
 // --- Dependencies ---
@@ -70,6 +71,7 @@ final documentPagesProvider = StreamProvider.family<List<PageModel>, String>((re
 final pdfServiceProvider = Provider<PdfService>((ref) => PdfService());
 final exportServiceProvider = Provider<ExportService>((ref) => ExportService());
 final scanServiceProvider = Provider<ScanService>((ref) => ScanService());
+final ocrServiceProvider = Provider<OcrService>((ref) => OcrService());
 
 // --- Controller ---
 
@@ -78,12 +80,14 @@ class DocumentController {
   final PdfService _pdfService;
   final ExportService _exportService;
   final ScanService _scanService;
+  final OcrService _ocrService;
 
   DocumentController(
     this._repository,
     this._pdfService,
     this._exportService,
     this._scanService,
+    this._ocrService,
   );
 
   // Updated to accept richer data from Custom Camera (Map: 'path', 'originalPath')
@@ -146,6 +150,32 @@ class DocumentController {
 
   Future<void> deletePage(String documentId, String pageId) async {
     await _repository.deletePage(documentId, pageId);
+  }
+
+  /// Run OCR on a page and save the recognized text.
+  Future<String> runOcr(String pageId) async {
+    final page = _repository.getPage(pageId);
+    if (page == null) return '';
+    final text = await _ocrService.recognizeText(page.imagePath);
+    if (text.isNotEmpty) {
+      page.ocrText = text;
+      await page.save();
+    }
+    return text;
+  }
+
+  /// Run OCR on all pages of a document.
+  Future<void> runOcrForDocument(String documentId) async {
+    final pages = _repository.getPagesForDocument(documentId);
+    for (var page in pages) {
+      if (page.ocrText == null || page.ocrText!.isEmpty) {
+        final text = await _ocrService.recognizeText(page.imagePath);
+        if (text.isNotEmpty) {
+          page.ocrText = text;
+          await page.save();
+        }
+      }
+    }
   }
 
   Future<void> shareImages(List<String> imagePaths) async {
@@ -226,5 +256,6 @@ final documentControllerProvider = Provider<DocumentController>((ref) {
     ref.watch(pdfServiceProvider),
     ref.watch(exportServiceProvider),
     ref.watch(scanServiceProvider),
+    ref.watch(ocrServiceProvider),
   );
 });

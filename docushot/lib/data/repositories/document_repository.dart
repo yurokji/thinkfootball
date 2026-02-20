@@ -49,6 +49,14 @@ class DocumentRepository {
 
   // --- Page Operations ---
 
+  PageModel? getPage(String pageId) {
+    try {
+      return _pageBox.values.firstWhere((p) => p.id == pageId);
+    } catch (_) {
+      return null;
+    }
+  }
+
   List<PageModel> getPagesForDocument(String documentId) {
     final doc = getDocument(documentId);
     if (doc == null) return [];

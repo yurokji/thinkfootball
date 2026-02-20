@@ -4,18 +4,19 @@ import 'package:flutter/services.dart';
 import 'package:docushot/data/models/page_model.dart';
 import 'package:docushot/presentation/screens/perspective_crop_screen.dart';
 import 'package:docushot/presentation/screens/enhance_screen.dart';
-import 'package:docushot/core/image/image_processor.dart';
 
 class PageViewerScreen extends StatefulWidget {
   final List<PageModel> pages;
   final int initialIndex;
   final void Function(String pageId, String newPath, {List<double>? cropCorners, int? filterType})? onPageUpdated;
+  final Future<String> Function(String pageId)? onRunOcr;
 
   const PageViewerScreen({
     super.key,
     required this.pages,
     this.initialIndex = 0,
     this.onPageUpdated,
+    this.onRunOcr,
   });
 
   @override
@@ -87,22 +88,84 @@ class _PageViewerScreenState extends State<PageViewerScreen> {
     );
   }
 
-  Future<void> _copyOcrText() async {
-    final text = _currentPage.ocrText;
-    if (text != null && text.isNotEmpty) {
-      await Clipboard.setData(ClipboardData(text: text));
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Text copied to clipboard')),
-        );
-      }
-    } else {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No OCR text available for this page')),
-        );
-      }
+  Future<void> _showOcrText() async {
+    final page = _currentPage;
+    String? text = page.ocrText;
+
+    // If no cached text, run OCR
+    if ((text == null || text.isEmpty) && widget.onRunOcr != null) {
+      // Show loading
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const Center(child: CircularProgressIndicator(color: Colors.white)),
+      );
+
+      text = await widget.onRunOcr!(page.id);
+
+      if (mounted) Navigator.pop(context); // dismiss loading
     }
+
+    if (!mounted) return;
+
+    if (text == null || text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No text recognized on this page')),
+      );
+      return;
+    }
+
+    // Show bottom sheet with recognized text
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.grey[900],
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) => DraggableScrollableSheet(
+        initialChildSize: 0.5,
+        minChildSize: 0.3,
+        maxChildSize: 0.85,
+        expand: false,
+        builder: (_, scrollController) => Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('Recognized Text', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                  IconButton(
+                    icon: const Icon(Icons.copy, color: Colors.white70),
+                    onPressed: () async {
+                      await Clipboard.setData(ClipboardData(text: text!));
+                      if (ctx.mounted) {
+                        Navigator.pop(ctx);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Text copied to clipboard')),
+                        );
+                      }
+                    },
+                  ),
+                ],
+              ),
+              const Divider(color: Colors.white24),
+              Expanded(
+                child: SingleChildScrollView(
+                  controller: scrollController,
+                  child: SelectableText(
+                    text!,
+                    style: const TextStyle(color: Colors.white70, fontSize: 14, height: 1.5),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -205,7 +268,7 @@ class _PageViewerScreenState extends State<PageViewerScreen> {
                           _ActionButton(
                             icon: Icons.text_snippet,
                             label: 'OCR Text',
-                            onTap: _copyOcrText,
+                            onTap: _showOcrText,
                           ),
                         ],
                       ),

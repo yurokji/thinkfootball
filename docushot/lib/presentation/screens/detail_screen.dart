@@ -215,6 +215,7 @@ class _DetailScreenState extends ConsumerState<DetailScreen> {
                                   onPageUpdated: (pageId, newPath, {cropCorners, filterType}) {
                                     controller.updatePageImage(pageId, newPath, cropCorners: cropCorners, filterType: filterType);
                                   },
+                                  onRunOcr: (pageId) => controller.runOcr(pageId),
                                 ),
                               ),
                             );
