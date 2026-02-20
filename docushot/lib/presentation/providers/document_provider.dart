@@ -8,6 +8,7 @@ import 'package:docushot/data/services/pdf_service.dart';
 import 'package:docushot/data/services/export_service.dart';
 import 'package:docushot/data/services/scan_service.dart';
 import 'package:docushot/data/services/ocr_service.dart';
+import 'package:docushot/data/services/backup_service.dart';
 import 'package:docushot/presentation/providers/settings_provider.dart';
 import 'package:image_picker/image_picker.dart';
 
@@ -72,6 +73,12 @@ final documentPagesProvider = StreamProvider.family<List<PageModel>, String>((re
 final pdfServiceProvider = Provider<PdfService>((ref) => PdfService());
 final exportServiceProvider = Provider<ExportService>((ref) => ExportService());
 final scanServiceProvider = Provider<ScanService>((ref) => ScanService());
+final backupServiceProvider = Provider<BackupService>((ref) {
+  final docBox = ref.watch(documentBoxProvider);
+  final pageBox = ref.watch(pageBoxProvider);
+  return BackupService(docBox, pageBox);
+});
+
 final ocrServiceProvider = Provider<OcrService>((ref) {
   final settings = ref.watch(settingsProvider);
   final service = OcrService();

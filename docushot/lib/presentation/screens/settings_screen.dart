@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive/hive.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:docushot/presentation/providers/settings_provider.dart';
+import 'package:docushot/presentation/providers/document_provider.dart';
 import 'package:docushot/presentation/screens/onboarding_screen.dart';
 import 'package:docushot/data/services/ocr_service.dart';
 
@@ -117,6 +119,48 @@ class SettingsScreen extends ConsumerWidget {
                   }).toList(),
                 ),
               );
+            },
+          ),
+
+          _buildSectionHeader(context, 'Backup'),
+          ListTile(
+            leading: const Icon(Icons.backup),
+            title: const Text('Create Backup'),
+            subtitle: const Text('Export all documents as a ZIP file'),
+            onTap: () async {
+              final backup = ref.read(backupServiceProvider);
+              // Show progress dialog
+              showDialog(
+                context: context,
+                barrierDismissible: false,
+                builder: (_) => const AlertDialog(
+                  content: Row(
+                    children: [
+                      CircularProgressIndicator(),
+                      SizedBox(width: 20),
+                      Text('Creating backup...'),
+                    ],
+                  ),
+                ),
+              );
+
+              final path = await backup.createBackup();
+
+              if (context.mounted) Navigator.pop(context); // dismiss progress
+
+              if (path != null && context.mounted) {
+                // Share the backup file
+                await Share.shareXFiles([XFile(path)], subject: 'Docushot Backup');
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Backup created and shared')),
+                  );
+                }
+              } else if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Backup failed')),
+                );
+              }
             },
           ),
 
