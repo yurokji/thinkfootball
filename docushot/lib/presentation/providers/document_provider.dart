@@ -148,6 +148,10 @@ class DocumentController {
     await _repository.deletePage(documentId, pageId);
   }
 
+  Future<void> shareImages(List<String> imagePaths) async {
+    await _exportService.shareMultipleFiles(imagePaths, subject: 'Shared Pages');
+  }
+
   Future<void> reorderPages(String documentId, int oldIndex, int newIndex) async {
     await _repository.reorderPages(documentId, oldIndex, newIndex);
   }

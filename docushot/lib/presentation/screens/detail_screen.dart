@@ -6,7 +6,8 @@ import 'package:docushot/data/models/page_model.dart';
 import 'package:docushot/presentation/providers/document_provider.dart';
 import 'package:docushot/presentation/widgets/page_grid_item.dart'; // Restored
 import 'package:docushot/presentation/screens/custom_camera_screen.dart'; 
-import 'package:docushot/presentation/screens/perspective_crop_screen.dart'; // New Custom Cropper
+import 'package:docushot/presentation/screens/perspective_crop_screen.dart';
+import 'package:docushot/presentation/screens/page_viewer_screen.dart';
 import 'dart:io';
 
 class DetailScreen extends ConsumerStatefulWidget {
@@ -94,7 +95,18 @@ class _DetailScreenState extends ConsumerState<DetailScreen> {
             ),
              IconButton(
               icon: const Icon(Icons.share),
-              onPressed: () {},
+              onPressed: () async {
+                final allPages = ref.read(documentPagesProvider(widget.document.id)).valueOrNull ?? [];
+                final selectedPages = allPages.where((p) => selectedPageIds.contains(p.id)).toList();
+                if (selectedPages.isNotEmpty) {
+                  final paths = selectedPages.map((p) => p.imagePath).toList();
+                  await controller.shareImages(paths);
+                }
+                setState(() {
+                  isSelectionMode = false;
+                  selectedPageIds.clear();
+                });
+              },
             ),
              IconButton(
               icon: const Icon(Icons.delete),
@@ -194,7 +206,18 @@ class _DetailScreenState extends ConsumerState<DetailScreen> {
                           isSelected: selectedPageIds.contains(page.id),
                           isSelectionMode: isSelectionMode,
                           onTap: () {
-                            // View Image (Full screen logic here)
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => PageViewerScreen(
+                                  pages: pages,
+                                  initialIndex: pages.indexOf(page),
+                                  onPageUpdated: (pageId, newPath, {cropCorners, filterType}) {
+                                    controller.updatePageImage(pageId, newPath, cropCorners: cropCorners, filterType: filterType);
+                                  },
+                                ),
+                              ),
+                            );
                           },
                           onSelectionToggle: () => _toggleSelection(page.id),
                         ),
