@@ -7,12 +7,14 @@ class AppSettings {
   final String imageQuality; // 'High', 'Medium'
   final bool autoCrop;
   final String ocrLanguage; // 'latin', 'korean', 'japanese', 'chinese', 'devanagari'
+  final String locale; // 'en', 'ko', 'ja'
 
   const AppSettings({
     this.themeMode = ThemeMode.dark,
     this.imageQuality = 'High',
     this.autoCrop = true,
     this.ocrLanguage = 'latin',
+    this.locale = 'en',
   });
 
   AppSettings copyWith({
@@ -20,12 +22,14 @@ class AppSettings {
     String? imageQuality,
     bool? autoCrop,
     String? ocrLanguage,
+    String? locale,
   }) {
     return AppSettings(
       themeMode: themeMode ?? this.themeMode,
       imageQuality: imageQuality ?? this.imageQuality,
       autoCrop: autoCrop ?? this.autoCrop,
       ocrLanguage: ocrLanguage ?? this.ocrLanguage,
+      locale: locale ?? this.locale,
     );
   }
 }
@@ -42,12 +46,14 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
     final quality = _box.get('imageQuality', defaultValue: 'High') as String;
     final autoCrop = _box.get('autoCrop', defaultValue: true) as bool;
     final ocrLang = _box.get('ocrLanguage', defaultValue: 'latin') as String;
+    final locale = _box.get('locale', defaultValue: 'en') as String;
 
     state = AppSettings(
       themeMode: themeName == 'light' ? ThemeMode.light : (themeName == 'system' ? ThemeMode.system : ThemeMode.dark),
       imageQuality: quality,
       autoCrop: autoCrop,
       ocrLanguage: ocrLang,
+      locale: locale,
     );
   }
 
@@ -70,6 +76,11 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
   void setOcrLanguage(String language) {
     _box.put('ocrLanguage', language);
     state = state.copyWith(ocrLanguage: language);
+  }
+
+  void setLocale(String locale) {
+    _box.put('locale', locale);
+    state = state.copyWith(locale: locale);
   }
 }
 

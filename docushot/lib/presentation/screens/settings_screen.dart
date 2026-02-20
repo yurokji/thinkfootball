@@ -21,6 +21,24 @@ class SettingsScreen extends ConsumerWidget {
         children: [
           _buildSectionHeader(context, 'Appearance'),
           ListTile(
+            title: const Text('Language'),
+            subtitle: Text(_localeDisplayName(settings.locale)),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+            onTap: () {
+              showDialog(
+                context: context,
+                builder: (ctx) => SimpleDialog(
+                  title: const Text('Language'),
+                  children: [
+                    _localeOption(ctx, notifier, settings.locale, 'en', 'English'),
+                    _localeOption(ctx, notifier, settings.locale, 'ko', '한국어'),
+                    _localeOption(ctx, notifier, settings.locale, 'ja', '日本語'),
+                  ],
+                ),
+              );
+            },
+          ),
+          ListTile(
             title: const Text('Theme'),
             subtitle: Text(
               settings.themeMode == ThemeMode.dark ? 'Dark' : (settings.themeMode == ThemeMode.light ? 'Light' : 'System'),
@@ -120,6 +138,33 @@ class SettingsScreen extends ConsumerWidget {
               );
             },
           ),
+        ],
+      ),
+    );
+  }
+
+  String _localeDisplayName(String locale) {
+    switch (locale) {
+      case 'ko': return '한국어';
+      case 'ja': return '日本語';
+      default: return 'English';
+    }
+  }
+
+  Widget _localeOption(BuildContext ctx, SettingsNotifier notifier, String current, String code, String label) {
+    return SimpleDialogOption(
+      onPressed: () {
+        notifier.setLocale(code);
+        Navigator.pop(ctx);
+      },
+      child: Row(
+        children: [
+          if (current == code)
+            Icon(Icons.check, size: 18, color: Theme.of(ctx).colorScheme.primary)
+          else
+            const SizedBox(width: 18),
+          const SizedBox(width: 12),
+          Text(label),
         ],
       ),
     );
