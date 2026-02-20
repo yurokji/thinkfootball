@@ -153,13 +153,29 @@ class _DetailScreenState extends ConsumerState<DetailScreen> {
                   }
               },
             ),
-            // ... other actions ...
-            IconButton(
-              icon: const Icon(Icons.picture_as_pdf),
-              onPressed: () {
-                // Export ALL pages
-                controller.exportPdf(widget.document.id);
+            PopupMenuButton<String>(
+              icon: const Icon(Icons.share),
+              onSelected: (value) async {
+                switch (value) {
+                  case 'pdf':
+                    await controller.exportPdf(widget.document.id);
+                    break;
+                  case 'zip':
+                    await controller.exportZip(widget.document.id);
+                    break;
+                  case 'images':
+                    final pages = ref.read(documentPagesProvider(widget.document.id)).valueOrNull ?? [];
+                    if (pages.isNotEmpty) {
+                      await controller.shareImages(pages.map((p) => p.imagePath).toList());
+                    }
+                    break;
+                }
               },
+              itemBuilder: (_) => const [
+                PopupMenuItem(value: 'pdf', child: ListTile(leading: Icon(Icons.picture_as_pdf), title: Text('Export PDF'), dense: true)),
+                PopupMenuItem(value: 'zip', child: ListTile(leading: Icon(Icons.folder_zip), title: Text('Export ZIP'), dense: true)),
+                PopupMenuItem(value: 'images', child: ListTile(leading: Icon(Icons.image), title: Text('Share Images'), dense: true)),
+              ],
             ),
             IconButton(
               icon: const Icon(Icons.delete_forever, color: Colors.redAccent),

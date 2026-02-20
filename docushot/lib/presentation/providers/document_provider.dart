@@ -204,6 +204,15 @@ class DocumentController {
     await _exportService.shareFile(pdfPath, doc.title);
   }
 
+  Future<void> exportZip(String documentId) async {
+    final pages = _repository.getPagesForDocument(documentId);
+    final doc = _repository.getDocument(documentId);
+    if (pages.isEmpty || doc == null) return;
+
+    final imagePaths = pages.map((p) => p.imagePath).toList();
+    await _exportService.shareAsZip(imagePaths, doc.title);
+  }
+
   Future<void> exportMultiplePdfs(List<String> documentIds) async {
     final List<String> paths = [];
     
