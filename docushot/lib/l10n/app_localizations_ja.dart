@@ -239,4 +239,256 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get documentsMerged => 'ドキュメントが結合されました';
+
+  @override
+  String scannerError(String error) {
+    return 'スキャナーエラー: $error';
+  }
+
+  @override
+  String get ocrLimitReached =>
+      '1日のOCR上限に達しました。プレミアムにアップグレードすると無制限にOCRを使用できます。';
+
+  @override
+  String ocrError(String error) {
+    return 'OCRエラー: $error';
+  }
+
+  @override
+  String get premiumLabel => 'プレミアム';
+
+  @override
+  String get premiumActive => 'プレミアム有効';
+
+  @override
+  String get youArePremium => 'プレミアム利用中！';
+
+  @override
+  String expiresOn(String date) {
+    return '有効期限: $date';
+  }
+
+  @override
+  String get upgradeToPremium => 'プレミアムにアップグレード';
+
+  @override
+  String get unlockAllFeatures => 'すべての機能をアンロック';
+
+  @override
+  String get allFeaturesUnlocked => 'すべての機能がアンロックされました';
+
+  @override
+  String get featureUnlimitedDocs => '無制限ドキュメント';
+
+  @override
+  String get featureUnlimitedDocsDesc => '必要なだけドキュメントを作成';
+
+  @override
+  String get featureAllFilters => 'すべてのフィルター＆調整';
+
+  @override
+  String get featureAllFiltersDesc => 'マジックカラー、白黒、明るさ、コントラスト';
+
+  @override
+  String get featureOcr => 'OCRテキスト認識';
+
+  @override
+  String get featureOcrDesc => '5言語でテキスト抽出';
+
+  @override
+  String get featureBatchScan => 'バッチスキャン';
+
+  @override
+  String get featureBatchScanDesc => '一度に複数ページをスキャン';
+
+  @override
+  String get featureZipExport => 'ZIP出力';
+
+  @override
+  String get featureZipExportDesc => 'ZIPアーカイブとしてドキュメントを出力';
+
+  @override
+  String get featureBackup => 'クラウドバックアップ';
+
+  @override
+  String get featureBackupDesc => 'ドキュメントを安全に保管';
+
+  @override
+  String get comingSoon => '近日公開';
+
+  @override
+  String get purchaseComingSoon => 'アプリがストアに公開されると、アプリ内購入が利用可能になります。';
+
+  @override
+  String get ok => 'OK';
+
+  @override
+  String get annual => '年間';
+
+  @override
+  String get monthly => '月間';
+
+  @override
+  String get annualPrice => '¥4,500/年';
+
+  @override
+  String get monthlyPrice => '¥750/月';
+
+  @override
+  String get save50 => '50%オフ';
+
+  @override
+  String get restorePurchase => '購入を復元';
+
+  @override
+  String get purchaseRestoreChecked => '購入復元を確認しました';
+
+  @override
+  String get subscription => 'サブスクリプション';
+
+  @override
+  String get language => '言語';
+
+  @override
+  String get backupSection => 'バックアップ';
+
+  @override
+  String get createBackup => 'バックアップ作成';
+
+  @override
+  String get createBackupDesc => 'すべてのドキュメントをZIPファイルとして出力';
+
+  @override
+  String get creatingBackup => 'バックアップ作成中...';
+
+  @override
+  String get backupCreated => 'バックアップが作成・共有されました';
+
+  @override
+  String get backupFailed => 'バックアップに失敗しました';
+
+  @override
+  String get mergeSelected => '選択を結合';
+
+  @override
+  String get enhanceTitle => '補正';
+
+  @override
+  String get cropRotate => 'クロップ / 回転';
+
+  @override
+  String get rotate90 => '90°回転';
+
+  @override
+  String get dragCornersHint => '角をドラッグして調整 • 回転ボタンで回す';
+
+  @override
+  String errorGeneric(String error) {
+    return 'エラー: $error';
+  }
+
+  @override
+  String get deleteDocument => 'ドキュメント削除';
+
+  @override
+  String get deleteDocumentConfirm => 'このドキュメントを削除しますか？この操作は元に戻せません。';
+
+  @override
+  String cropError(String error) {
+    return 'クロップ失敗: $error';
+  }
+
+  @override
+  String filterError(String error) {
+    return 'フィルター適用失敗: $error';
+  }
+
+  @override
+  String adjustmentError(String error) {
+    return '調整失敗: $error';
+  }
+
+  @override
+  String shareError(String error) {
+    return '共有失敗: $error';
+  }
+
+  @override
+  String get exportPdfSuccess => 'PDF出力完了';
+
+  @override
+  String imagesAdded(int count) {
+    return '$count枚追加されました';
+  }
+
+  @override
+  String get restoreNotAvailable => '購入の復元はまだ利用できません';
+
+  @override
+  String get restoreBackup => 'バックアップ復元';
+
+  @override
+  String get restoreBackupDesc => 'バックアップファイルからドキュメントを復元';
+
+  @override
+  String get restoringBackup => 'バックアップ復元中...';
+
+  @override
+  String get backupRestored => 'バックアップが正常に復元されました';
+
+  @override
+  String get backupRestoreFailed => 'バックアップの復元に失敗しました';
+
+  @override
+  String get selectBackupFile => '復元するバックアップZIPファイルを選択してください';
+
+  @override
+  String get deletePageSingle => 'このページを削除しますか？';
+
+  @override
+  String ocrRemainingCount(int remaining, int total) {
+    return '$remaining/$total';
+  }
+
+  @override
+  String get ocrUnlimited => '∞';
+
+  @override
+  String get noBackupsFound => 'バックアップが見つかりません';
+
+  @override
+  String backupDate(String date) {
+    return 'バックアップ: $date';
+  }
+
+  @override
+  String backupSize(String size) {
+    return '$size MB';
+  }
+
+  @override
+  String get lastPage => '最後のページです。ドキュメントは詳細画面から削除してください。';
+
+  @override
+  String get purchaseInProgress => '購入処理中...';
+
+  @override
+  String get purchaseSuccess => '購入完了！プレミアムが有効化されました。';
+
+  @override
+  String purchaseFailed(String error) {
+    return '購入失敗: $error';
+  }
+
+  @override
+  String get purchaseRestored => '購入が正常に復元されました';
+
+  @override
+  String get purchaseRestoreNone => '以前の購入が見つかりません';
+
+  @override
+  String get loadingProducts => '読み込み中...';
+
+  @override
+  String get storeUnavailable => 'ストアが利用できません';
 }

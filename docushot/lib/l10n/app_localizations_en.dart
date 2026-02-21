@@ -241,4 +241,260 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get documentsMerged => 'Documents merged';
+
+  @override
+  String scannerError(String error) {
+    return 'Scanner error: $error';
+  }
+
+  @override
+  String get ocrLimitReached =>
+      'Daily OCR limit reached. Upgrade to Premium for unlimited OCR.';
+
+  @override
+  String ocrError(String error) {
+    return 'OCR error: $error';
+  }
+
+  @override
+  String get premiumLabel => 'Premium';
+
+  @override
+  String get premiumActive => 'Premium Active';
+
+  @override
+  String get youArePremium => 'You are Premium!';
+
+  @override
+  String expiresOn(String date) {
+    return 'Expires: $date';
+  }
+
+  @override
+  String get upgradeToPremium => 'Upgrade to Premium';
+
+  @override
+  String get unlockAllFeatures =>
+      'Unlock all features for professional scanning';
+
+  @override
+  String get allFeaturesUnlocked => 'All features unlocked';
+
+  @override
+  String get featureUnlimitedDocs => 'Unlimited Documents';
+
+  @override
+  String get featureUnlimitedDocsDesc => 'Create as many documents as you need';
+
+  @override
+  String get featureAllFilters => 'All Filters & Adjustments';
+
+  @override
+  String get featureAllFiltersDesc => 'Magic Color, B&W, brightness, contrast';
+
+  @override
+  String get featureOcr => 'OCR Text Recognition';
+
+  @override
+  String get featureOcrDesc => 'Extract text in 5 languages';
+
+  @override
+  String get featureBatchScan => 'Batch Scanning';
+
+  @override
+  String get featureBatchScanDesc => 'Scan multiple pages in one session';
+
+  @override
+  String get featureZipExport => 'ZIP Export';
+
+  @override
+  String get featureZipExportDesc => 'Export documents as ZIP archives';
+
+  @override
+  String get featureBackup => 'Cloud Backup';
+
+  @override
+  String get featureBackupDesc => 'Never lose your documents';
+
+  @override
+  String get comingSoon => 'Coming Soon';
+
+  @override
+  String get purchaseComingSoon =>
+      'In-app purchase will be available once the app is published to the store.';
+
+  @override
+  String get ok => 'OK';
+
+  @override
+  String get annual => 'Annual';
+
+  @override
+  String get monthly => 'Monthly';
+
+  @override
+  String get annualPrice => '\$29.99/year';
+
+  @override
+  String get monthlyPrice => '\$4.99/month';
+
+  @override
+  String get save50 => 'Save 50%';
+
+  @override
+  String get restorePurchase => 'Restore Purchase';
+
+  @override
+  String get purchaseRestoreChecked => 'Purchase restore checked';
+
+  @override
+  String get subscription => 'Subscription';
+
+  @override
+  String get language => 'Language';
+
+  @override
+  String get backupSection => 'Backup';
+
+  @override
+  String get createBackup => 'Create Backup';
+
+  @override
+  String get createBackupDesc => 'Export all documents as a ZIP file';
+
+  @override
+  String get creatingBackup => 'Creating backup...';
+
+  @override
+  String get backupCreated => 'Backup created and shared';
+
+  @override
+  String get backupFailed => 'Backup failed';
+
+  @override
+  String get mergeSelected => 'Merge Selected';
+
+  @override
+  String get enhanceTitle => 'ENHANCE';
+
+  @override
+  String get cropRotate => 'CROP / ROTATE';
+
+  @override
+  String get rotate90 => 'Rotate 90°';
+
+  @override
+  String get dragCornersHint => 'Drag corners to adjust • Tap rotate to turn';
+
+  @override
+  String errorGeneric(String error) {
+    return 'Error: $error';
+  }
+
+  @override
+  String get deleteDocument => 'Delete Document';
+
+  @override
+  String get deleteDocumentConfirm =>
+      'Delete this document? This action cannot be undone.';
+
+  @override
+  String cropError(String error) {
+    return 'Crop failed: $error';
+  }
+
+  @override
+  String filterError(String error) {
+    return 'Filter failed: $error';
+  }
+
+  @override
+  String adjustmentError(String error) {
+    return 'Adjustment failed: $error';
+  }
+
+  @override
+  String shareError(String error) {
+    return 'Sharing failed: $error';
+  }
+
+  @override
+  String get exportPdfSuccess => 'PDF exported';
+
+  @override
+  String imagesAdded(int count) {
+    return '$count image(s) added';
+  }
+
+  @override
+  String get restoreNotAvailable => 'Purchase restore is not yet available';
+
+  @override
+  String get restoreBackup => 'Restore Backup';
+
+  @override
+  String get restoreBackupDesc => 'Restore documents from a backup file';
+
+  @override
+  String get restoringBackup => 'Restoring backup...';
+
+  @override
+  String get backupRestored => 'Backup restored successfully';
+
+  @override
+  String get backupRestoreFailed => 'Backup restore failed';
+
+  @override
+  String get selectBackupFile => 'Select a backup ZIP file to restore';
+
+  @override
+  String get deletePageSingle => 'Delete this page?';
+
+  @override
+  String ocrRemainingCount(int remaining, int total) {
+    return '$remaining/$total';
+  }
+
+  @override
+  String get ocrUnlimited => '∞';
+
+  @override
+  String get noBackupsFound => 'No backups found';
+
+  @override
+  String backupDate(String date) {
+    return 'Backup: $date';
+  }
+
+  @override
+  String backupSize(String size) {
+    return '$size MB';
+  }
+
+  @override
+  String get lastPage =>
+      'This is the last page. Delete the document from the detail screen.';
+
+  @override
+  String get purchaseInProgress => 'Processing purchase...';
+
+  @override
+  String get purchaseSuccess => 'Purchase successful! Premium activated.';
+
+  @override
+  String purchaseFailed(String error) {
+    return 'Purchase failed: $error';
+  }
+
+  @override
+  String get purchaseRestored => 'Purchase restored successfully';
+
+  @override
+  String get purchaseRestoreNone => 'No previous purchases found';
+
+  @override
+  String get loadingProducts => 'Loading...';
+
+  @override
+  String get storeUnavailable => 'Store is not available';
 }
