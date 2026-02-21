@@ -47,6 +47,11 @@ app.*.map.json
 # Local properties (contains local SDK paths)
 android/local.properties
 
+# Release signing
+android/key.properties
+*.jks
+*.keystore
+
 # Gradle build artifacts
 **/.gradle/
 **/build/
