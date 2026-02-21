@@ -1,37 +1,97 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:in_app_purchase/in_app_purchase.dart';
+import 'package:docushot/data/services/iap_service.dart';
+import 'package:docushot/presentation/providers/iap_provider.dart';
 import 'package:docushot/presentation/providers/premium_provider.dart';
+import 'package:docushot/l10n/app_localizations.dart';
 
-class PaywallScreen extends ConsumerWidget {
+class PaywallScreen extends ConsumerStatefulWidget {
   const PaywallScreen({super.key});
 
-  static const _features = [
-    _Feature(Icons.all_inclusive, 'Unlimited Documents', 'Create as many documents as you need'),
-    _Feature(Icons.auto_fix_high, 'All Filters & Adjustments', 'Magic Color, B&W, brightness, contrast'),
-    _Feature(Icons.text_snippet, 'OCR Text Recognition', 'Extract text in 5 languages'),
-    _Feature(Icons.photo_library, 'Batch Scanning', 'Scan multiple pages in one session'),
-    _Feature(Icons.folder_zip, 'ZIP Export', 'Export documents as ZIP archives'),
-    _Feature(Icons.cloud_upload, 'Cloud Backup', 'Never lose your documents'),
-  ];
+  @override
+  ConsumerState<PaywallScreen> createState() => _PaywallScreenState();
+}
+
+class _PaywallScreenState extends ConsumerState<PaywallScreen> {
+  StreamSubscription<IapState>? _iapSubscription;
+  bool _isPurchasing = false;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  void initState() {
+    super.initState();
+    _listenToIapState();
+  }
+
+  void _listenToIapState() {
+    final iap = ref.read(iapServiceProvider);
+    _iapSubscription = iap.stateStream.listen((state) {
+      if (!mounted) return;
+      final l = AppLocalizations.of(context)!;
+
+      switch (state.status) {
+        case IapStatus.purchasing:
+          setState(() => _isPurchasing = true);
+          break;
+
+        case IapStatus.purchased:
+          setState(() => _isPurchasing = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(l.purchaseSuccess)),
+          );
+          // Premium state auto-refreshes via premiumProvider
+          break;
+
+        case IapStatus.restored:
+          setState(() => _isPurchasing = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(l.purchaseRestored)),
+          );
+          break;
+
+        case IapStatus.canceled:
+          setState(() => _isPurchasing = false);
+          break;
+
+        case IapStatus.error:
+          setState(() => _isPurchasing = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(l.purchaseFailed(state.error ?? ''))),
+          );
+          break;
+
+        default:
+          break;
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _iapSubscription?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
     final premium = ref.watch(premiumProvider);
 
     if (premium.isPremium) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Premium')),
+        appBar: AppBar(title: Text(l.premiumLabel)),
         body: Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               const Icon(Icons.verified, size: 64, color: Colors.amber),
               const SizedBox(height: 16),
-              const Text('You are Premium!', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+              Text(l.youArePremium, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
               if (premium.expiresAt != null) ...[
                 const SizedBox(height: 8),
                 Text(
-                  'Expires: ${premium.expiresAt!.year}-${premium.expiresAt!.month.toString().padLeft(2, '0')}-${premium.expiresAt!.day.toString().padLeft(2, '0')}',
+                  l.expiresOn('${premium.expiresAt!.year}-${premium.expiresAt!.month.toString().padLeft(2, '0')}-${premium.expiresAt!.day.toString().padLeft(2, '0')}'),
                   style: TextStyle(color: Colors.grey[500]),
                 ),
               ],
@@ -40,6 +100,20 @@ class PaywallScreen extends ConsumerWidget {
         ),
       );
     }
+
+    final iap = ref.watch(iapServiceProvider);
+    final products = iap.products;
+    final annualProduct = iap.getProduct(kPremiumAnnual);
+    final monthlyProduct = iap.getProduct(kPremiumMonthly);
+
+    final features = [
+      _Feature(Icons.all_inclusive, l.featureUnlimitedDocs, l.featureUnlimitedDocsDesc),
+      _Feature(Icons.auto_fix_high, l.featureAllFilters, l.featureAllFiltersDesc),
+      _Feature(Icons.text_snippet, l.featureOcr, l.featureOcrDesc),
+      _Feature(Icons.photo_library, l.featureBatchScan, l.featureBatchScanDesc),
+      _Feature(Icons.folder_zip, l.featureZipExport, l.featureZipExportDesc),
+      _Feature(Icons.cloud_upload, l.featureBackup, l.featureBackupDesc),
+    ];
 
     return Scaffold(
       backgroundColor: const Color(0xFF0D1117),
@@ -56,20 +130,20 @@ class PaywallScreen extends ConsumerWidget {
             ),
 
             // Header
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 32),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 32),
               child: Column(
                 children: [
-                  Icon(Icons.workspace_premium, size: 56, color: Colors.amber),
-                  SizedBox(height: 16),
+                  const Icon(Icons.workspace_premium, size: 56, color: Colors.amber),
+                  const SizedBox(height: 16),
                   Text(
-                    'Upgrade to Premium',
-                    style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
+                    l.upgradeToPremium,
+                    style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
                   ),
-                  SizedBox(height: 8),
+                  const SizedBox(height: 8),
                   Text(
-                    'Unlock all features for professional scanning',
-                    style: TextStyle(color: Colors.white60, fontSize: 14),
+                    l.unlockAllFeatures,
+                    style: const TextStyle(color: Colors.white60, fontSize: 14),
                     textAlign: TextAlign.center,
                   ),
                 ],
@@ -82,9 +156,9 @@ class PaywallScreen extends ConsumerWidget {
             Expanded(
               child: ListView.builder(
                 padding: const EdgeInsets.symmetric(horizontal: 32),
-                itemCount: _features.length,
+                itemCount: features.length,
                 itemBuilder: (context, index) {
-                  final feature = _features[index];
+                  final feature = features[index];
                   return Padding(
                     padding: const EdgeInsets.only(bottom: 16),
                     child: Row(
@@ -118,43 +192,43 @@ class PaywallScreen extends ConsumerWidget {
             // Purchase buttons
             Padding(
               padding: const EdgeInsets.all(32),
-              child: Column(
-                children: [
-                  // Annual
-                  _PurchaseButton(
-                    label: 'Annual',
-                    price: '\$29.99/year',
-                    savings: 'Save 50%',
-                    isPrimary: true,
-                    onTap: () {
-                      // TODO: Trigger actual purchase via in_app_purchase
-                      _showPurchasePlaceholder(context);
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  // Monthly
-                  _PurchaseButton(
-                    label: 'Monthly',
-                    price: '\$4.99/month',
-                    onTap: () {
-                      _showPurchasePlaceholder(context);
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  // Restore
-                  TextButton(
-                    onPressed: () async {
-                      await ref.read(premiumProvider.notifier).restorePurchase();
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Purchase restore checked')),
-                        );
-                      }
-                    },
-                    child: const Text('Restore Purchase', style: TextStyle(color: Colors.white54, fontSize: 13)),
-                  ),
-                ],
-              ),
+              child: _isPurchasing
+                  ? Column(
+                      children: [
+                        const CircularProgressIndicator(color: Colors.amber),
+                        const SizedBox(height: 12),
+                        Text(l.purchaseInProgress, style: const TextStyle(color: Colors.white60)),
+                      ],
+                    )
+                  : Column(
+                      children: [
+                        // Annual
+                        _PurchaseButton(
+                          label: l.annual,
+                          price: annualProduct?.price ?? l.annualPrice,
+                          savings: l.save50,
+                          isPrimary: true,
+                          onTap: products.isEmpty
+                              ? () => _showStoreUnavailable(context, l)
+                              : () => _buySubscription(kPremiumAnnual),
+                        ),
+                        const SizedBox(height: 12),
+                        // Monthly
+                        _PurchaseButton(
+                          label: l.monthly,
+                          price: monthlyProduct?.price ?? l.monthlyPrice,
+                          onTap: products.isEmpty
+                              ? () => _showStoreUnavailable(context, l)
+                              : () => _buySubscription(kPremiumMonthly),
+                        ),
+                        const SizedBox(height: 16),
+                        // Restore
+                        TextButton(
+                          onPressed: _restorePurchases,
+                          child: Text(l.restorePurchase, style: const TextStyle(color: Colors.white54, fontSize: 13)),
+                        ),
+                      ],
+                    ),
             ),
           ],
         ),
@@ -162,19 +236,26 @@ class PaywallScreen extends ConsumerWidget {
     );
   }
 
-  void _showPurchasePlaceholder(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Coming Soon'),
-        content: const Text('In-app purchase will be available once the app is published to the store.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('OK'),
-          ),
-        ],
-      ),
+  void _buySubscription(String productId) {
+    final iap = ref.read(iapServiceProvider);
+    iap.buySubscription(productId).catchError((e) {
+      if (mounted) {
+        final l = AppLocalizations.of(context)!;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(l.purchaseFailed(e.toString()))),
+        );
+      }
+    });
+  }
+
+  void _restorePurchases() {
+    final iap = ref.read(iapServiceProvider);
+    iap.restorePurchases();
+  }
+
+  void _showStoreUnavailable(BuildContext context, AppLocalizations l) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(l.storeUnavailable)),
     );
   }
 }

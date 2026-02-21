@@ -1,8 +1,12 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:docushot/core/image/image_processor.dart';
+import 'package:docushot/presentation/providers/premium_provider.dart';
+import 'package:docushot/presentation/screens/paywall_screen.dart';
+import 'package:docushot/l10n/app_localizations.dart';
 
-class EnhanceScreen extends StatefulWidget {
+class EnhanceScreen extends ConsumerStatefulWidget {
   final String imagePath;
   final String originalPath;
   final bool isManualMode;
@@ -21,10 +25,10 @@ class EnhanceScreen extends StatefulWidget {
   });
 
   @override
-  State<EnhanceScreen> createState() => _EnhanceScreenState();
+  ConsumerState<EnhanceScreen> createState() => _EnhanceScreenState();
 }
 
-class _EnhanceScreenState extends State<EnhanceScreen> {
+class _EnhanceScreenState extends ConsumerState<EnhanceScreen> {
   late String _currentDisplayPath;
   late String _filterBasePath; // Path after filter, before manual adjustments
   int _selectedFilter = 0; // 0=Original, 1=Magic, 2=B/W, 3=Lighten
@@ -58,6 +62,15 @@ class _EnhanceScreenState extends State<EnhanceScreen> {
       return;
     }
 
+    // Premium filters: Magic Color (1) and Lighten (3). B&W (2) is free.
+    if (filterType == 1 || filterType == 3) {
+      final premium = ref.read(premiumProvider);
+      if (!premium.hasAllFilters) {
+        Navigator.push(context, MaterialPageRoute(builder: (_) => const PaywallScreen()));
+        return;
+      }
+    }
+
     setState(() {
       _isProcessing = true;
       _selectedFilter = filterType;
@@ -77,8 +90,12 @@ class _EnhanceScreenState extends State<EnhanceScreen> {
         });
       }
     } catch (e) {
-      debugPrint("Filter error: $e");
-      if (mounted) setState(() => _isProcessing = false);
+      if (mounted) {
+        setState(() => _isProcessing = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(AppLocalizations.of(context)!.filterError(e.toString()))),
+        );
+      }
     }
   }
 
@@ -100,8 +117,12 @@ class _EnhanceScreenState extends State<EnhanceScreen> {
         });
       }
     } catch (e) {
-      debugPrint("Adjustment error: $e");
-      if (mounted) setState(() => _isProcessing = false);
+      if (mounted) {
+        setState(() => _isProcessing = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(AppLocalizations.of(context)!.adjustmentError(e.toString()))),
+        );
+      }
     }
   }
 
@@ -116,7 +137,7 @@ class _EnhanceScreenState extends State<EnhanceScreen> {
         backgroundColor: Colors.black,
         appBar: AppBar(
           backgroundColor: Colors.black,
-          title: const Text('ENHANCE', style: TextStyle(color: Colors.white, fontSize: 16, letterSpacing: 1.2)),
+          title: Text(AppLocalizations.of(context)!.enhanceTitle, style: const TextStyle(color: Colors.white, fontSize: 16, letterSpacing: 1.2)),
           iconTheme: const IconThemeData(color: Colors.white),
           actions: [
             IconButton(
@@ -128,7 +149,7 @@ class _EnhanceScreenState extends State<EnhanceScreen> {
             ),
             TextButton(
               onPressed: _onDone,
-              child: const Text('DONE', style: TextStyle(color: Colors.cyanAccent, fontWeight: FontWeight.bold)),
+              child: Text(AppLocalizations.of(context)!.done, style: const TextStyle(color: Colors.cyanAccent, fontWeight: FontWeight.bold)),
             )
           ],
         ),
@@ -155,7 +176,7 @@ class _EnhanceScreenState extends State<EnhanceScreen> {
                 child: Column(
                   children: [
                     _buildSlider(
-                      label: 'Brightness',
+                      label: AppLocalizations.of(context)!.brightness,
                       icon: Icons.brightness_6,
                       value: _brightness,
                       min: 0.5,
@@ -164,7 +185,7 @@ class _EnhanceScreenState extends State<EnhanceScreen> {
                       onChangeEnd: (_) => _applyManualAdjustments(),
                     ),
                     _buildSlider(
-                      label: 'Contrast',
+                      label: AppLocalizations.of(context)!.contrast,
                       icon: Icons.contrast,
                       value: _contrast,
                       min: 0.5,
@@ -185,13 +206,13 @@ class _EnhanceScreenState extends State<EnhanceScreen> {
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.symmetric(horizontal: 20),
                 children: [
-                   _buildFilterItem(0, "Original", Icons.image),
+                   _buildFilterItem(0, AppLocalizations.of(context)!.original, Icons.image, false),
                    const SizedBox(width: 20),
-                   _buildFilterItem(1, "Magic Color", Icons.auto_fix_high),
+                   _buildFilterItem(1, AppLocalizations.of(context)!.magicColor, Icons.auto_fix_high, !ref.watch(premiumProvider).hasAllFilters),
                    const SizedBox(width: 20),
-                   _buildFilterItem(2, "B & W", Icons.contrast),
+                   _buildFilterItem(2, AppLocalizations.of(context)!.bw, Icons.contrast, false),
                    const SizedBox(width: 20),
-                   _buildFilterItem(3, "Lighten", Icons.light_mode),
+                   _buildFilterItem(3, AppLocalizations.of(context)!.lighten, Icons.light_mode, !ref.watch(premiumProvider).hasAllFilters),
                 ],
               ),
             ),
@@ -247,24 +268,38 @@ class _EnhanceScreenState extends State<EnhanceScreen> {
     );
   }
 
-  Widget _buildFilterItem(int type, String label, IconData icon) {
+  Widget _buildFilterItem(int type, String label, IconData icon, bool locked) {
     final bool isSelected = _selectedFilter == type;
     return GestureDetector(
       onTap: () => _applyFilter(type),
       child: Column(
         children: [
-          Container(
-            width: 60,
-            height: 60,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: isSelected ? Colors.cyanAccent : Colors.grey.shade800,
-                width: 2
+          Stack(
+            children: [
+              Container(
+                width: 60,
+                height: 60,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: isSelected ? Colors.cyanAccent : Colors.grey.shade800,
+                    width: 2
+                  ),
+                  color: isSelected ? Colors.cyanAccent.withValues(alpha: 0.1) : Colors.transparent,
+                ),
+                child: Icon(icon, color: isSelected ? Colors.cyanAccent : Colors.white70),
               ),
-              color: isSelected ? Colors.cyanAccent.withValues(alpha: 0.1) : Colors.transparent,
-            ),
-            child: Icon(icon, color: isSelected ? Colors.cyanAccent : Colors.white70),
+              if (locked)
+                Positioned(
+                  right: 0,
+                  top: 0,
+                  child: Container(
+                    padding: const EdgeInsets.all(2),
+                    decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.amber),
+                    child: const Icon(Icons.lock, size: 12, color: Colors.black),
+                  ),
+                ),
+            ],
           ),
           const SizedBox(height: 8),
           Text(label, style: TextStyle(

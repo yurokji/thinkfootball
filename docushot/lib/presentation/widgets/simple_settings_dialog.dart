@@ -2,12 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:docushot/presentation/providers/settings_provider.dart';
 import 'package:docushot/presentation/screens/settings_screen.dart';
+import 'package:docushot/l10n/app_localizations.dart';
 
 class SimpleSettingsDialog extends ConsumerWidget {
   const SimpleSettingsDialog({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l = AppLocalizations.of(context)!;
     final settings = ref.watch(settingsProvider);
     final notifier = ref.read(settingsProvider.notifier);
 
@@ -20,20 +22,20 @@ class SimpleSettingsDialog extends ConsumerWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Quick Settings',
-              style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+            Text(
+              l.quickSettings,
+              style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 20),
             // Dark Mode Toggle
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Row(
+                Row(
                   children: [
-                    Icon(Icons.dark_mode, color: Colors.white70, size: 20),
-                    SizedBox(width: 12),
-                    Text('Dark Mode', style: TextStyle(color: Colors.white70)),
+                    const Icon(Icons.dark_mode, color: Colors.white70, size: 20),
+                    const SizedBox(width: 12),
+                    Text(l.darkMode, style: const TextStyle(color: Colors.white70)),
                   ],
                 ),
                 Switch(
@@ -50,11 +52,11 @@ class SimpleSettingsDialog extends ConsumerWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Row(
+                Row(
                   children: [
-                    Icon(Icons.crop, color: Colors.white70, size: 20),
-                    SizedBox(width: 12),
-                    Text('Auto Crop', style: TextStyle(color: Colors.white70)),
+                    const Icon(Icons.crop, color: Colors.white70, size: 20),
+                    const SizedBox(width: 12),
+                    Text(l.autoCrop, style: const TextStyle(color: Colors.white70)),
                   ],
                 ),
                 Switch(
@@ -72,7 +74,7 @@ class SimpleSettingsDialog extends ConsumerWidget {
             Center(
               child: TextButton.icon(
                 icon: const Icon(Icons.settings, color: Colors.cyanAccent),
-                label: const Text('Advanced Settings', style: TextStyle(color: Colors.cyanAccent)),
+                label: Text(l.advancedSettings, style: const TextStyle(color: Colors.cyanAccent)),
                 onPressed: () {
                   Navigator.pop(context);
                   Navigator.push(

@@ -1,7 +1,7 @@
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
-import 'package:docushot/core/models/scan_result.dart';
 
 enum FilterType {
   original,
@@ -122,14 +122,6 @@ class ImageProcessor {
     });
   }
 
-  /// Apply filter to all ScanResults in batch, updating each result's path.
-  static Future<void> applyFilterToAll(List<ScanResult> results, int filterType) async {
-    for (var result in results) {
-      final newPath = await applyFilter(result.path, filterType);
-      result.path = newPath;
-      result.filterType = filterType;
-    }
-  }
 
   // Perspective Crop
   static Future<String> perspectiveCrop(String path, List<img.Point> corners) async {

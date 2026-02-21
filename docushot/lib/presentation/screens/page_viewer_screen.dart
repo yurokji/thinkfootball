@@ -4,12 +4,15 @@ import 'package:flutter/services.dart';
 import 'package:docushot/data/models/page_model.dart';
 import 'package:docushot/presentation/screens/perspective_crop_screen.dart';
 import 'package:docushot/presentation/screens/enhance_screen.dart';
+import 'package:docushot/l10n/app_localizations.dart';
 
 class PageViewerScreen extends StatefulWidget {
   final List<PageModel> pages;
   final int initialIndex;
   final void Function(String pageId, String newPath, {List<double>? cropCorners, int? filterType})? onPageUpdated;
   final Future<String> Function(String pageId)? onRunOcr;
+  final Future<void> Function(String pageId)? onDeletePage;
+  final int ocrRemaining; // -1 = unlimited (premium)
 
   const PageViewerScreen({
     super.key,
@@ -17,6 +20,8 @@ class PageViewerScreen extends StatefulWidget {
     this.initialIndex = 0,
     this.onPageUpdated,
     this.onRunOcr,
+    this.onDeletePage,
+    this.ocrRemaining = -1,
   });
 
   @override
@@ -88,6 +93,47 @@ class _PageViewerScreenState extends State<PageViewerScreen> {
     );
   }
 
+  Future<void> _deletePage() async {
+    if (widget.onDeletePage == null) return;
+    final l = AppLocalizations.of(context)!;
+
+    // Last page — can't delete from viewer
+    if (widget.pages.length <= 1) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(l.lastPage)),
+      );
+      return;
+    }
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(l.deletePageSingle),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(l.cancel)),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: Text(l.delete, style: const TextStyle(color: Colors.red))),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+
+    final page = _currentPage;
+    await widget.onDeletePage!(page.id);
+
+    if (!mounted) return;
+
+    // Remove from local list and adjust index
+    widget.pages.removeWhere((p) => p.id == page.id);
+    if (widget.pages.isEmpty) {
+      Navigator.pop(context);
+      return;
+    }
+    if (_currentIndex >= widget.pages.length) {
+      _currentIndex = widget.pages.length - 1;
+    }
+    setState(() {});
+  }
+
   Future<void> _showOcrText() async {
     final page = _currentPage;
     String? text = page.ocrText;
@@ -102,7 +148,20 @@ class _PageViewerScreenState extends State<PageViewerScreen> {
         builder: (_) => const Center(child: CircularProgressIndicator(color: Colors.white)),
       );
 
-      text = await widget.onRunOcr!(page.id);
+      try {
+        text = await widget.onRunOcr!(page.id);
+      } catch (e) {
+        if (mounted) Navigator.pop(context); // dismiss loading
+        if (mounted) {
+          final l = AppLocalizations.of(context)!;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(e.toString().contains('Premium')
+              ? l.ocrLimitReached
+              : l.ocrError(e.toString()))),
+          );
+        }
+        return;
+      }
 
       if (mounted) Navigator.pop(context); // dismiss loading
     }
@@ -111,7 +170,7 @@ class _PageViewerScreenState extends State<PageViewerScreen> {
 
     if (text == null || text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No text recognized on this page')),
+        SnackBar(content: Text(AppLocalizations.of(context)!.noTextRecognized)),
       );
       return;
     }
@@ -136,7 +195,7 @@ class _PageViewerScreenState extends State<PageViewerScreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text('Recognized Text', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                  Text(AppLocalizations.of(context)!.recognizedText, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
                   IconButton(
                     icon: const Icon(Icons.copy, color: Colors.white70),
                     onPressed: () async {
@@ -144,7 +203,7 @@ class _PageViewerScreenState extends State<PageViewerScreen> {
                       if (ctx.mounted) {
                         Navigator.pop(ctx);
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Text copied to clipboard')),
+                          SnackBar(content: Text(AppLocalizations.of(context)!.textCopied)),
                         );
                       }
                     },
@@ -257,19 +316,27 @@ class _PageViewerScreenState extends State<PageViewerScreen> {
                         children: [
                           _ActionButton(
                             icon: Icons.crop,
-                            label: 'Crop',
+                            label: AppLocalizations.of(context)!.crop,
                             onTap: _openCrop,
                           ),
                           _ActionButton(
                             icon: Icons.auto_fix_high,
-                            label: 'Enhance',
+                            label: AppLocalizations.of(context)!.enhance,
                             onTap: _openEnhance,
                           ),
                           _ActionButton(
                             icon: Icons.text_snippet,
-                            label: 'OCR Text',
+                            label: widget.ocrRemaining < 0
+                                ? AppLocalizations.of(context)!.ocrText
+                                : '${AppLocalizations.of(context)!.ocrText} (${widget.ocrRemaining})',
                             onTap: _showOcrText,
                           ),
+                          if (widget.onDeletePage != null)
+                            _ActionButton(
+                              icon: Icons.delete_outline,
+                              label: AppLocalizations.of(context)!.delete,
+                              onTap: _deletePage,
+                            ),
                         ],
                       ),
                     ),

@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:image/image.dart' as img;
 import 'package:docushot/core/image/image_processor.dart';
+import 'package:docushot/l10n/app_localizations.dart';
 
 class PerspectiveCropScreen extends StatefulWidget {
   final String imagePath;
@@ -149,10 +150,12 @@ class _PerspectiveCropScreenState extends State<PerspectiveCropScreen> {
 
     try {
       String resultPath = widget.imagePath;
+      String? rotationTempPath;
 
       // Apply rotation first if needed
       if (_rotationSteps > 0) {
         resultPath = await _applyRotation(resultPath, _rotationSteps);
+        rotationTempPath = resultPath; // Track for cleanup
         // After rotation, points are already in rotated space, recalculate
         final rotatedDecoded = await decodeImageFromList(File(resultPath).readAsBytesSync());
         final rw = rotatedDecoded.width.toDouble();
@@ -163,13 +166,23 @@ class _PerspectiveCropScreenState extends State<PerspectiveCropScreen> {
       }
 
       final croppedPath = await ImageProcessor.perspectiveCrop(resultPath, points);
+
+      // Clean up rotation temp file (D-3)
+      if (rotationTempPath != null && rotationTempPath != croppedPath) {
+        try { File(rotationTempPath).deleteSync(); } catch (_) {}
+      }
+
       if (mounted) {
         Navigator.pop(context); // Pop loader
         Navigator.pop(context, {'path': croppedPath, 'corners': savedCorners});
       }
     } catch (e) {
-      if (mounted) Navigator.pop(context);
-      debugPrint('Crop error: $e');
+      if (mounted) {
+        Navigator.pop(context); // Pop loader
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(AppLocalizations.of(context)!.cropError(e.toString()))),
+        );
+      }
     }
   }
 
@@ -194,13 +207,13 @@ class _PerspectiveCropScreenState extends State<PerspectiveCropScreen> {
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
-        title: const Text('CROP / ROTATE', style: TextStyle(color: Colors.white, fontSize: 16, letterSpacing: 1.2)),
+        title: Text(AppLocalizations.of(context)!.cropRotate, style: const TextStyle(color: Colors.white, fontSize: 16, letterSpacing: 1.2)),
         backgroundColor: Colors.black,
         iconTheme: const IconThemeData(color: Colors.white),
         actions: [
           IconButton(
             icon: const Icon(Icons.rotate_right, color: Colors.white),
-            tooltip: 'Rotate 90°',
+            tooltip: AppLocalizations.of(context)!.rotate90,
             onPressed: _rotateClockwise,
           ),
           IconButton(
@@ -249,9 +262,9 @@ class _PerspectiveCropScreenState extends State<PerspectiveCropScreen> {
             Container(
               height: 60,
               color: Colors.black,
-              child: const Center(
-                child: Text('Drag corners to adjust • Tap rotate to turn',
-                    style: TextStyle(color: Colors.grey, fontSize: 13)),
+              child: Center(
+                child: Text(AppLocalizations.of(context)!.dragCornersHint,
+                    style: const TextStyle(color: Colors.grey, fontSize: 13)),
               ),
             ),
           ],

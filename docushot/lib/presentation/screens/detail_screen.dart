@@ -4,10 +4,12 @@ import 'package:reorderable_grid_view/reorderable_grid_view.dart';
 import 'package:docushot/data/models/document_model.dart';
 import 'package:docushot/data/models/page_model.dart';
 import 'package:docushot/presentation/providers/document_provider.dart';
-import 'package:docushot/presentation/widgets/page_grid_item.dart'; // Restored
-import 'package:docushot/presentation/screens/custom_camera_screen.dart'; 
+import 'package:docushot/presentation/providers/premium_provider.dart';
+import 'package:docushot/presentation/widgets/page_grid_item.dart';
 import 'package:docushot/presentation/screens/perspective_crop_screen.dart';
 import 'package:docushot/presentation/screens/page_viewer_screen.dart';
+import 'package:docushot/presentation/screens/paywall_screen.dart';
+import 'package:docushot/l10n/app_localizations.dart';
 import 'dart:io';
 
 class DetailScreen extends ConsumerStatefulWidget {
@@ -72,6 +74,7 @@ class _DetailScreenState extends ConsumerState<DetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
     final pagesAsync = ref.watch(documentPagesProvider(widget.document.id));
     final controller = ref.read(documentControllerProvider);
 
@@ -114,11 +117,11 @@ class _DetailScreenState extends ConsumerState<DetailScreen> {
                 final confirm = await showDialog<bool>(
                   context: context,
                   builder: (ctx) => AlertDialog(
-                    title: const Text('Delete Pages'),
-                    content: Text('Delete ${selectedPageIds.length} page(s)?'),
+                    title: Text(l.deletePages),
+                    content: Text(l.deletePagesConfirm(selectedPageIds.length)),
                     actions: [
-                      TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-                      TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Delete', style: TextStyle(color: Colors.red))),
+                      TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(l.cancel)),
+                      TextButton(onPressed: () => Navigator.pop(ctx, true), child: Text(l.delete, style: const TextStyle(color: Colors.red))),
                     ],
                   ),
                 );
@@ -137,52 +140,99 @@ class _DetailScreenState extends ConsumerState<DetailScreen> {
             IconButton(
               icon: const Icon(Icons.image), // Import
               onPressed: () async {
-                 await controller.importImagesFromGallery(widget.document.id);
+                final count = await controller.importImagesFromGallery(widget.document.id);
+                if (count > 0 && context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text(l.imagesAdded(count))),
+                  );
+                }
               },
             ),
             IconButton(
               icon: const Icon(Icons.add_a_photo), // Camera
               onPressed: () async {
-                  // Launch Custom Camera
-                  final result = await Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const CustomCameraScreen()),
-                  );
-                  if (result != null && result is List && result.isNotEmpty) {
-                    await controller.addPagesToDocument(widget.document.id, result);
+                  try {
+                    final scanService = ref.read(scanServiceProvider);
+                    final images = await scanService.scanDocuments();
+                    if (images.isNotEmpty) {
+                      await controller.addPagesToDocument(widget.document.id, images);
+                    }
+                  } catch (e) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text(l.scannerError(e.toString()))),
+                      );
+                    }
                   }
               },
             ),
             PopupMenuButton<String>(
               icon: const Icon(Icons.share),
               onSelected: (value) async {
-                switch (value) {
-                  case 'pdf':
-                    await controller.exportPdf(widget.document.id);
-                    break;
-                  case 'zip':
-                    await controller.exportZip(widget.document.id);
-                    break;
-                  case 'images':
-                    final pages = ref.read(documentPagesProvider(widget.document.id)).value ?? [];
-                    if (pages.isNotEmpty) {
-                      await controller.shareImages(pages.map((p) => p.imagePath).toList());
-                    }
-                    break;
+                try {
+                  switch (value) {
+                    case 'pdf':
+                      await controller.exportPdf(widget.document.id);
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text(l.exportPdfSuccess)),
+                        );
+                      }
+                      break;
+                    case 'zip':
+                      await controller.exportZip(widget.document.id);
+                      break;
+                    case 'images':
+                      final pages = ref.read(documentPagesProvider(widget.document.id)).value ?? [];
+                      if (pages.isNotEmpty) {
+                        await controller.shareImages(pages.map((p) => p.imagePath).toList());
+                      }
+                      break;
+                  }
+                } on PremiumRequiredException {
+                  if (context.mounted) {
+                    Navigator.push(context, MaterialPageRoute(builder: (_) => const PaywallScreen()));
+                  }
+                } catch (e) {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text(l.shareError(e.toString()))),
+                    );
+                  }
                 }
               },
-              itemBuilder: (_) => const [
-                PopupMenuItem(value: 'pdf', child: ListTile(leading: Icon(Icons.picture_as_pdf), title: Text('Export PDF'), dense: true)),
-                PopupMenuItem(value: 'zip', child: ListTile(leading: Icon(Icons.folder_zip), title: Text('Export ZIP'), dense: true)),
-                PopupMenuItem(value: 'images', child: ListTile(leading: Icon(Icons.image), title: Text('Share Images'), dense: true)),
-              ],
+              itemBuilder: (ctx) {
+                final isPremium = ref.read(premiumProvider).isPremium;
+                return [
+                  PopupMenuItem(value: 'pdf', child: ListTile(leading: const Icon(Icons.picture_as_pdf), title: Text(l.exportPdf), dense: true)),
+                  PopupMenuItem(value: 'zip', child: ListTile(
+                    leading: const Icon(Icons.folder_zip),
+                    title: Text(l.exportZip),
+                    trailing: isPremium ? null : const Icon(Icons.lock, size: 16, color: Colors.amber),
+                    dense: true,
+                  )),
+                  PopupMenuItem(value: 'images', child: ListTile(leading: const Icon(Icons.image), title: Text(l.shareImages), dense: true)),
+                ];
+              },
             ),
             IconButton(
               icon: const Icon(Icons.delete_forever, color: Colors.redAccent),
-              onPressed: () {
-                controller.deleteDocument(widget.document.id).then((_) {
-                  Navigator.pop(context);
-                });
+              onPressed: () async {
+                final confirm = await showDialog<bool>(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                    title: Text(l.deleteDocument),
+                    content: Text(l.deleteDocumentConfirm),
+                    actions: [
+                      TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(l.cancel)),
+                      TextButton(onPressed: () => Navigator.pop(ctx, true), child: Text(l.delete, style: const TextStyle(color: Colors.red))),
+                    ],
+                  ),
+                );
+                if (confirm == true) {
+                  await controller.deleteDocument(widget.document.id);
+                  if (context.mounted) Navigator.pop(context);
+                }
               },
             ),
           ]
@@ -195,7 +245,7 @@ class _DetailScreenState extends ConsumerState<DetailScreen> {
               color: Colors.black12,
               padding: const EdgeInsets.symmetric(vertical: 8),
               child: Center(
-                child: Text('${selectedPageIds.length} Selected'),
+                child: Text(l.selected(selectedPageIds.length)),
               ),
              ),
           Expanded(
@@ -208,9 +258,9 @@ class _DetailScreenState extends ConsumerState<DetailScreen> {
                        children: [
                          Icon(Icons.note_add, size: 48, color: Colors.grey[600]),
                          const SizedBox(height: 16),
-                         Text('No pages yet', style: TextStyle(color: Colors.grey[500], fontSize: 15)),
+                         Text(l.noPagesYet, style: TextStyle(color: Colors.grey[500], fontSize: 15)),
                          const SizedBox(height: 6),
-                         Text('Use camera or gallery to add pages', style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+                         Text(l.noPagesHint, style: TextStyle(color: Colors.grey[600], fontSize: 12)),
                        ],
                      ),
                    );
@@ -243,6 +293,8 @@ class _DetailScreenState extends ConsumerState<DetailScreen> {
                                     controller.updatePageImage(pageId, newPath, cropCorners: cropCorners, filterType: filterType);
                                   },
                                   onRunOcr: (pageId) => controller.runOcr(pageId),
+                                  onDeletePage: (pageId) => controller.deletePage(widget.document.id, pageId),
+                                  ocrRemaining: ref.read(premiumProvider).ocrRemaining,
                                 ),
                               ),
                             );
@@ -255,7 +307,7 @@ class _DetailScreenState extends ConsumerState<DetailScreen> {
                 );
               },
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (err, stack) => Center(child: Text('Error: $err')),
+              error: (err, stack) => Center(child: Text(l.errorGeneric(err.toString()))),
             ),
           ),
         ],
