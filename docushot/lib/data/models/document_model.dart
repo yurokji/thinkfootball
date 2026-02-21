@@ -1,26 +1,12 @@
-import 'package:hive/hive.dart';
+import 'dart:convert';
 import 'package:uuid/uuid.dart';
 
-part 'document_model.g.dart';
-
-@HiveType(typeId: 0)
-class DocumentModel extends HiveObject {
-  @HiveField(0)
+class DocumentModel {
   final String id;
-
-  @HiveField(1)
   String title;
-
-  @HiveField(2)
   final DateTime createdAt;
-
-  @HiveField(3)
   DateTime updatedAt;
-
-  @HiveField(4)
   String? thumbnailPath;
-
-  @HiveField(5)
   List<String> pageIds;
 
   DocumentModel({
@@ -40,6 +26,28 @@ class DocumentModel extends HiveObject {
       createdAt: now,
       updatedAt: now,
       pageIds: [],
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'title': title,
+      'created_at': createdAt.toIso8601String(),
+      'updated_at': updatedAt.toIso8601String(),
+      'thumbnail_path': thumbnailPath,
+      'page_ids': jsonEncode(pageIds),
+    };
+  }
+
+  factory DocumentModel.fromMap(Map<String, dynamic> map) {
+    return DocumentModel(
+      id: map['id'] as String,
+      title: map['title'] as String,
+      createdAt: DateTime.parse(map['created_at'] as String),
+      updatedAt: DateTime.parse(map['updated_at'] as String),
+      thumbnailPath: map['thumbnail_path'] as String?,
+      pageIds: List<String>.from(jsonDecode(map['page_ids'] as String)),
     );
   }
 }

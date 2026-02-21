@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:archive/archive.dart';
-import 'package:hive/hive.dart';
+import 'package:sqflite/sqflite.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:docushot/data/models/document_model.dart';
 import 'package:docushot/data/models/page_model.dart';
@@ -9,18 +9,19 @@ import 'dart:convert';
 
 /// Backup/restore service for document data and images.
 class BackupService {
-  final Box<DocumentModel> _docBox;
-  final Box<PageModel> _pageBox;
+  final Database _db;
 
-  BackupService(this._docBox, this._pageBox);
+  BackupService(this._db);
 
   /// Create a backup zip containing all documents, pages metadata, and images.
   /// Returns the path to the created backup file.
   Future<String?> createBackup({void Function(double progress)? onProgress}) async {
     try {
       final archive = Archive();
-      final docs = _docBox.values.toList();
-      final pages = _pageBox.values.toList();
+      final docRows = await _db.query('documents');
+      final pageRows = await _db.query('pages');
+      final docs = docRows.map((r) => DocumentModel.fromMap(r)).toList();
+      final pages = pageRows.map((r) => PageModel.fromMap(r)).toList();
       final totalItems = docs.length + pages.length;
       int processed = 0;
 
@@ -122,8 +123,8 @@ class BackupService {
 
       // 3. Restore documents
       for (var docData in docsJson) {
-        final existing = _docBox.values.where((d) => d.id == docData['id']).firstOrNull;
-        if (existing != null) continue; // Skip duplicates
+        final existing = await _db.query('documents', where: 'id = ?', whereArgs: [docData['id']]);
+        if (existing.isNotEmpty) continue; // Skip duplicates
 
         final doc = DocumentModel(
           id: docData['id'],
@@ -133,15 +134,15 @@ class BackupService {
           thumbnailPath: _resolveImagePath(docData['thumbnailPath'], pathMap, dir.path),
           pageIds: List<String>.from(docData['pageIds'] ?? []),
         );
-        await _docBox.add(doc);
+        await _db.insert('documents', doc.toMap());
         processed++;
         onProgress?.call(processed / totalItems);
       }
 
       // 4. Restore pages
       for (var pageData in pagesJson) {
-        final existing = _pageBox.values.where((p) => p.id == pageData['id']).firstOrNull;
-        if (existing != null) continue; // Skip duplicates
+        final existing = await _db.query('pages', where: 'id = ?', whereArgs: [pageData['id']]);
+        if (existing.isNotEmpty) continue; // Skip duplicates
 
         final page = PageModel(
           id: pageData['id'],
@@ -153,7 +154,7 @@ class BackupService {
           cropCorners: pageData['cropCorners'] != null ? List<double>.from(pageData['cropCorners']) : null,
           filterType: pageData['filterType'] ?? 0,
         );
-        await _pageBox.add(page);
+        await _db.insert('pages', page.toMap());
         processed++;
         onProgress?.call(processed / totalItems);
       }

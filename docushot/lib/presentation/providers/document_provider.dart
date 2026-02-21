@@ -1,6 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:hive/hive.dart';
-import 'package:async/async.dart';
+import 'package:sqflite/sqflite.dart';
 import 'package:docushot/data/models/document_model.dart';
 import 'package:docushot/data/models/page_model.dart';
 import 'package:docushot/data/repositories/document_repository.dart';
@@ -10,61 +9,39 @@ import 'package:docushot/data/services/scan_service.dart';
 import 'package:docushot/data/services/ocr_service.dart';
 import 'package:docushot/data/services/backup_service.dart';
 import 'package:docushot/presentation/providers/settings_provider.dart';
+import 'package:docushot/presentation/providers/premium_provider.dart';
 import 'package:image_picker/image_picker.dart';
 
 // --- Dependencies ---
 
-final documentBoxProvider = Provider<Box<DocumentModel>>((ref) {
-  return Hive.box<DocumentModel>('documents');
-});
-
-final pageBoxProvider = Provider<Box<PageModel>>((ref) {
-  return Hive.box<PageModel>('pages');
+final databaseProvider = Provider<Database>((ref) {
+  throw UnimplementedError('databaseProvider must be overridden at startup');
 });
 
 final documentRepositoryProvider = Provider<DocumentRepository>((ref) {
-  final docBox = ref.watch(documentBoxProvider);
-  final pageBox = ref.watch(pageBoxProvider);
-  return DocumentRepository(docBox, pageBox);
+  final db = ref.watch(databaseProvider);
+  return DocumentRepository(db);
 });
 
 // --- State Providers ---
 
-// Stream of all documents (listens to Box events)
 final documentListProvider = StreamProvider<List<DocumentModel>>((ref) async* {
   final repository = ref.watch(documentRepositoryProvider);
-  final box = ref.watch(documentBoxProvider);
 
-  // Initial yield
-  yield repository.getAllDocuments();
+  yield await repository.getAllDocumentsAsync();
 
-  // Watch for changes
-  await for (final _ in box.watch()) {
-    yield repository.getAllDocuments();
+  await for (final _ in repository.changes) {
+    yield await repository.getAllDocumentsAsync();
   }
 });
 
-// Stream of pages for a specific document
 final documentPagesProvider = StreamProvider.family<List<PageModel>, String>((ref, documentId) async* {
   final repository = ref.watch(documentRepositoryProvider);
-  final docBox = ref.watch(documentBoxProvider);
-  final pageBox = ref.watch(pageBoxProvider); // Need to watch page box too
 
-  // Helper to fetch
-  List<PageModel> fetch() => repository.getPagesForDocument(documentId);
+  yield await repository.getPagesForDocumentAsync(documentId);
 
-  yield fetch();
-
-  // Watch both boxes for changes
-  // Merging streams simplistically or just listening to re-renders caused by repository actions
-  // For simplicity: Watch generic box events.
-  // Ideally, we should listen to specific object changes, but box.watch() is simple.
-  
-  // Create a combined stream or just listen to relevant events manually?
-  // Let's rely on Ref.notifyListeners() from Controller or just watch boxes.
-  
-  await for (final _ in StreamGroup.merge([docBox.watch(), pageBox.watch()])) {
-     yield fetch();
+  await for (final _ in repository.changes) {
+    yield await repository.getPagesForDocumentAsync(documentId);
   }
 });
 
@@ -74,9 +51,8 @@ final pdfServiceProvider = Provider<PdfService>((ref) => PdfService());
 final exportServiceProvider = Provider<ExportService>((ref) => ExportService());
 final scanServiceProvider = Provider<ScanService>((ref) => ScanService());
 final backupServiceProvider = Provider<BackupService>((ref) {
-  final docBox = ref.watch(documentBoxProvider);
-  final pageBox = ref.watch(pageBoxProvider);
-  return BackupService(docBox, pageBox);
+  final db = ref.watch(databaseProvider);
+  return BackupService(db);
 });
 
 final ocrServiceProvider = Provider<OcrService>((ref) {
@@ -94,6 +70,7 @@ class DocumentController {
   final ExportService _exportService;
   final ScanService _scanService;
   final OcrService _ocrService;
+  final PremiumNotifier _premium;
 
   DocumentController(
     this._repository,
@@ -101,11 +78,10 @@ class DocumentController {
     this._exportService,
     this._scanService,
     this._ocrService,
+    this._premium,
   );
 
-  // Updated to accept richer data from Custom Camera (Map: 'path', 'originalPath')
   Future<DocumentModel> createDocument({List<dynamic>? initialImages}) async {
-    // Determine title
     final now = DateTime.now();
     final title = 'Scan ${now.year}-${now.month}-${now.day} ${now.hour}:${now.minute}';
     final doc = await _repository.createDocument(title);
@@ -120,7 +96,6 @@ class DocumentController {
     await _repository.deleteDocument(id);
   }
 
-  // Helper to handle both List<String> (legacy/gallery) and List<Map> (camera)
   Future<void> _processAndAddImages(String documentId, List<dynamic> images) async {
     for (var item in images) {
       if (item is String) {
@@ -129,19 +104,17 @@ class DocumentController {
         final path = item['path'] as String;
         final originalPath = item['originalPath'] as String?;
         final corners = item['corners'] as List<double>?;
-        // final filter = item['filter'] as int?; // Future use
-        
+
         await _repository.addPageToDocument(
-          documentId, 
-          path, 
-          originalImagePath: originalPath, 
+          documentId,
+          path,
+          originalImagePath: originalPath,
           cropCorners: corners,
         );
       }
     }
   }
-  
-  // Expose as public for DetailScreen
+
   Future<void> addPagesToDocument(String documentId, List<dynamic> images) async {
     await _processAndAddImages(documentId, images);
   }
@@ -150,15 +123,16 @@ class DocumentController {
     await _repository.updatePageImage(pageId, newImagePath, cropCorners: cropCorners, filterType: filterType);
   }
 
-  Future<void> importImagesFromGallery(String documentId) async {
+  /// Import images from gallery. Returns the number of images added.
+  Future<int> importImagesFromGallery(String documentId) async {
     final picker = ImagePicker();
     final List<XFile> images = await picker.pickMultiImage();
-    
-    if (images.isEmpty) return;
 
-    // Gallery images are "original" by default
+    if (images.isEmpty) return 0;
+
     final paths = images.map((e) => e.path).toList();
     await addPagesToDocument(documentId, paths);
+    return images.length;
   }
 
   Future<void> deletePage(String documentId, String pageId) async {
@@ -166,26 +140,28 @@ class DocumentController {
   }
 
   /// Run OCR on a page and save the recognized text.
+  /// Throws [PremiumRequiredException] if daily OCR limit reached (free tier).
   Future<String> runOcr(String pageId) async {
-    final page = _repository.getPage(pageId);
+    _premium.consumeOcr();
+    final page = await _repository.getPageAsync(pageId);
     if (page == null) return '';
     final text = await _ocrService.recognizeText(page.imagePath);
     if (text.isNotEmpty) {
-      page.ocrText = text;
-      await page.save();
+      await _repository.updatePageOcrText(pageId, text);
     }
     return text;
   }
 
   /// Run OCR on all pages of a document.
+  /// Throws [PremiumRequiredException] if daily OCR limit reached (free tier).
   Future<void> runOcrForDocument(String documentId) async {
-    final pages = _repository.getPagesForDocument(documentId);
+    final pages = await _repository.getPagesForDocumentAsync(documentId);
     for (var page in pages) {
       if (page.ocrText == null || page.ocrText!.isEmpty) {
+        _premium.consumeOcr();
         final text = await _ocrService.recognizeText(page.imagePath);
         if (text.isNotEmpty) {
-          page.ocrText = text;
-          await page.save();
+          await _repository.updatePageOcrText(page.id, text);
         }
       }
     }
@@ -200,39 +176,41 @@ class DocumentController {
   }
 
   Future<void> exportPdf(String documentId, {List<String>? pageIds}) async {
-    List<PageModel> pages = _repository.getPagesForDocument(documentId);
-    final doc = _repository.getDocument(documentId);
-    
+    List<PageModel> pages = await _repository.getPagesForDocumentAsync(documentId);
+    final doc = await _repository.getDocumentAsync(documentId);
+
     if (pages.isEmpty || doc == null) return;
 
-    // Filter if specific pages selected
     if (pageIds != null && pageIds.isNotEmpty) {
-      pages = pages.where((p) => p.id != null && pageIds.contains(p.id)).toList();
+      pages = pages.where((p) => pageIds.contains(p.id)).toList();
     }
 
     final imagePaths = pages.map((p) => p.imagePath).toList();
     final pdfPath = await _pdfService.generatePdf(imagePaths, doc.title);
-    
-    // Share immediately for now
+
     await _exportService.shareFile(pdfPath, doc.title);
   }
 
+  /// Throws [PremiumRequiredException] if not premium.
   Future<void> exportZip(String documentId) async {
-    final pages = _repository.getPagesForDocument(documentId);
-    final doc = _repository.getDocument(documentId);
+    _premium.requirePremium('ZIP export');
+    final pages = await _repository.getPagesForDocumentAsync(documentId);
+    final doc = await _repository.getDocumentAsync(documentId);
     if (pages.isEmpty || doc == null) return;
 
     final imagePaths = pages.map((p) => p.imagePath).toList();
     await _exportService.shareAsZip(imagePaths, doc.title);
   }
 
+  /// Throws [PremiumRequiredException] if not premium.
   Future<void> exportMultiplePdfs(List<String> documentIds) async {
+    _premium.requirePremium('Batch export');
     final List<String> paths = [];
-    
+
     for (var id in documentIds) {
-      final doc = _repository.getDocument(id);
-      final pages = _repository.getPagesForDocument(id);
-      
+      final doc = await _repository.getDocumentAsync(id);
+      final pages = await _repository.getPagesForDocumentAsync(id);
+
       if (doc != null && pages.isNotEmpty) {
         final imagePaths = pages.map((p) => p.imagePath).toList();
         final pdfPath = await _pdfService.generatePdf(imagePaths, doc.title);
@@ -246,26 +224,21 @@ class DocumentController {
   }
 
   Future<void> renameDocument(String documentId, String newTitle) async {
-    final doc = _repository.getDocument(documentId);
-    if (doc != null) {
-      doc.title = newTitle;
-      doc.updatedAt = DateTime.now();
-      await doc.save();
-    }
+    await _repository.renameDocument(documentId, newTitle);
   }
 
+  /// Throws [PremiumRequiredException] if not premium.
   Future<void> mergeDocuments(List<String> documentIds) async {
+    _premium.requirePremium('Merge');
     if (documentIds.length < 2) return;
 
-    // Create new Merged Doc
     final now = DateTime.now();
     final newTitle = 'Merged ${now.hour}:${now.minute}';
     final newDoc = await _repository.createDocument(newTitle);
 
     for (var docId in documentIds) {
-      final pages = _repository.getPagesForDocument(docId);
+      final pages = await _repository.getPagesForDocumentAsync(docId);
       for (var page in pages) {
-        // We add pages to the new document (copying image paths)
         await _repository.addPageToDocument(newDoc.id, page.imagePath);
       }
     }
@@ -279,5 +252,6 @@ final documentControllerProvider = Provider<DocumentController>((ref) {
     ref.watch(exportServiceProvider),
     ref.watch(scanServiceProvider),
     ref.watch(ocrServiceProvider),
+    ref.read(premiumProvider.notifier),
   );
 });

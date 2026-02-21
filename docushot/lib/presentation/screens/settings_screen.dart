@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:hive/hive.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:docushot/presentation/providers/settings_provider.dart';
 import 'package:docushot/presentation/providers/document_provider.dart';
@@ -8,31 +7,33 @@ import 'package:docushot/presentation/screens/onboarding_screen.dart';
 import 'package:docushot/data/services/ocr_service.dart';
 import 'package:docushot/presentation/providers/premium_provider.dart';
 import 'package:docushot/presentation/screens/paywall_screen.dart';
+import 'package:docushot/l10n/app_localizations.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l = AppLocalizations.of(context)!;
     final settings = ref.watch(settingsProvider);
     final notifier = ref.read(settingsProvider.notifier);
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Settings'),
+        title: Text(l.settings),
       ),
       body: ListView(
         children: [
-          _buildSectionHeader(context, 'Appearance'),
+          _buildSectionHeader(context, l.appearance),
           ListTile(
-            title: const Text('Language'),
+            title: Text(l.language),
             subtitle: Text(_localeDisplayName(settings.locale)),
             trailing: const Icon(Icons.arrow_forward_ios, size: 16),
             onTap: () {
               showDialog(
                 context: context,
                 builder: (ctx) => SimpleDialog(
-                  title: const Text('Language'),
+                  title: Text(l.language),
                   children: [
                     _localeOption(ctx, notifier, settings.locale, 'en', 'English'),
                     _localeOption(ctx, notifier, settings.locale, 'ko', '한국어'),
@@ -43,28 +44,28 @@ class SettingsScreen extends ConsumerWidget {
             },
           ),
           ListTile(
-            title: const Text('Theme'),
+            title: Text(l.theme),
             subtitle: Text(
-              settings.themeMode == ThemeMode.dark ? 'Dark' : (settings.themeMode == ThemeMode.light ? 'Light' : 'System'),
+              settings.themeMode == ThemeMode.dark ? l.themeDark : (settings.themeMode == ThemeMode.light ? l.themeLight : l.themeSystem),
             ),
             trailing: const Icon(Icons.arrow_forward_ios, size: 16),
             onTap: () {
               showDialog(
                 context: context,
                 builder: (ctx) => SimpleDialog(
-                  title: const Text('Choose Theme'),
+                  title: Text(l.chooseTheme),
                   children: [
                     SimpleDialogOption(
                       onPressed: () { notifier.setThemeMode(ThemeMode.light); Navigator.pop(ctx); },
-                      child: const Text('Light'),
+                      child: Text(l.themeLight),
                     ),
                     SimpleDialogOption(
                       onPressed: () { notifier.setThemeMode(ThemeMode.dark); Navigator.pop(ctx); },
-                      child: const Text('Dark'),
+                      child: Text(l.themeDark),
                     ),
                     SimpleDialogOption(
                       onPressed: () { notifier.setThemeMode(ThemeMode.system); Navigator.pop(ctx); },
-                      child: const Text('System Default'),
+                      child: Text(l.themeSystem),
                     ),
                   ],
                 ),
@@ -72,34 +73,16 @@ class SettingsScreen extends ConsumerWidget {
             },
           ),
 
-          _buildSectionHeader(context, 'Camera'),
+          _buildSectionHeader(context, l.ocrSection),
           ListTile(
-            title: const Text('Image Quality'),
-            subtitle: Text(settings.imageQuality),
-            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-            onTap: () {
-              final next = settings.imageQuality == 'High' ? 'Medium' : 'High';
-              notifier.setImageQuality(next);
-            },
-          ),
-          SwitchListTile(
-            title: const Text('Auto Crop'),
-            subtitle: const Text('Automatically crop scanned documents'),
-            value: settings.autoCrop,
-            onChanged: (v) => notifier.setAutoCrop(v),
-            activeColor: Theme.of(context).colorScheme.primary,
-          ),
-
-          _buildSectionHeader(context, 'OCR'),
-          ListTile(
-            title: const Text('OCR Language'),
+            title: Text(l.ocrLanguage),
             subtitle: Text(OcrService.supportedScripts[OcrService.scriptFromName(settings.ocrLanguage)] ?? 'English / Latin'),
             trailing: const Icon(Icons.arrow_forward_ios, size: 16),
             onTap: () {
               showDialog(
                 context: context,
                 builder: (ctx) => SimpleDialog(
-                  title: const Text('OCR Language'),
+                  title: Text(l.ocrLanguage),
                   children: OcrService.supportedScripts.entries.map((entry) {
                     final name = OcrService.scriptToName(entry.key);
                     return SimpleDialogOption(
@@ -124,23 +107,30 @@ class SettingsScreen extends ConsumerWidget {
             },
           ),
 
-          _buildSectionHeader(context, 'Backup'),
+          _buildSectionHeader(context, l.backupSection),
           ListTile(
             leading: const Icon(Icons.backup),
-            title: const Text('Create Backup'),
-            subtitle: const Text('Export all documents as a ZIP file'),
+            title: Text(l.createBackup),
+            subtitle: Text(l.createBackupDesc),
+            trailing: ref.watch(premiumProvider).hasBackup
+                ? null
+                : const Icon(Icons.lock, size: 16, color: Colors.amber),
             onTap: () async {
+              if (!ref.read(premiumProvider).hasBackup) {
+                Navigator.push(context, MaterialPageRoute(builder: (_) => const PaywallScreen()));
+                return;
+              }
               final backup = ref.read(backupServiceProvider);
               // Show progress dialog
               showDialog(
                 context: context,
                 barrierDismissible: false,
-                builder: (_) => const AlertDialog(
+                builder: (_) => AlertDialog(
                   content: Row(
                     children: [
-                      CircularProgressIndicator(),
-                      SizedBox(width: 20),
-                      Text('Creating backup...'),
+                      const CircularProgressIndicator(),
+                      const SizedBox(width: 20),
+                      Text(l.creatingBackup),
                     ],
                   ),
                 ),
@@ -155,42 +145,119 @@ class SettingsScreen extends ConsumerWidget {
                 await Share.shareXFiles([XFile(path)], subject: 'Docushot Backup');
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Backup created and shared')),
+                    SnackBar(content: Text(l.backupCreated)),
                   );
                 }
               } else if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Backup failed')),
+                  SnackBar(content: Text(l.backupFailed)),
                 );
               }
             },
           ),
 
-          _buildSectionHeader(context, 'Subscription'),
+          ListTile(
+            leading: const Icon(Icons.restore),
+            title: Text(l.restoreBackup),
+            subtitle: Text(l.restoreBackupDesc),
+            trailing: ref.watch(premiumProvider).hasBackup
+                ? null
+                : const Icon(Icons.lock, size: 16, color: Colors.amber),
+            onTap: () async {
+              if (!ref.read(premiumProvider).hasBackup) {
+                Navigator.push(context, MaterialPageRoute(builder: (_) => const PaywallScreen()));
+                return;
+              }
+              final backup = ref.read(backupServiceProvider);
+              final backups = await backup.listLocalBackups();
+
+              if (backups.isEmpty) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text(l.noBackupsFound)),
+                  );
+                }
+                return;
+              }
+
+              if (!context.mounted) return;
+
+              // Show backup selection dialog
+              final selectedPath = await showDialog<String>(
+                context: context,
+                builder: (ctx) => SimpleDialog(
+                  title: Text(l.restoreBackup),
+                  children: backups.map((file) {
+                    final name = file.path.split('/').last;
+                    final stat = file.statSync();
+                    final sizeMb = (stat.size / 1024 / 1024).toStringAsFixed(1);
+                    return SimpleDialogOption(
+                      onPressed: () => Navigator.pop(ctx, file.path),
+                      child: ListTile(
+                        leading: const Icon(Icons.archive),
+                        title: Text(name, overflow: TextOverflow.ellipsis),
+                        subtitle: Text('$sizeMb MB'),
+                        dense: true,
+                      ),
+                    );
+                  }).toList(),
+                ),
+              );
+
+              if (selectedPath == null || !context.mounted) return;
+
+              // Show progress
+              showDialog(
+                context: context,
+                barrierDismissible: false,
+                builder: (_) => AlertDialog(
+                  content: Row(
+                    children: [
+                      const CircularProgressIndicator(),
+                      const SizedBox(width: 20),
+                      Text(l.restoringBackup),
+                    ],
+                  ),
+                ),
+              );
+
+              final success = await backup.restoreBackup(selectedPath);
+
+              if (context.mounted) Navigator.pop(context); // dismiss progress
+
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text(success ? l.backupRestored : l.backupRestoreFailed)),
+                );
+              }
+            },
+          ),
+
+          _buildSectionHeader(context, l.subscription),
           ListTile(
             leading: Icon(
               ref.watch(premiumProvider).isPremium ? Icons.verified : Icons.workspace_premium,
               color: Colors.amber,
             ),
-            title: Text(ref.watch(premiumProvider).isPremium ? 'Premium Active' : 'Upgrade to Premium'),
-            subtitle: Text(ref.watch(premiumProvider).isPremium ? 'All features unlocked' : 'Unlock all features'),
+            title: Text(ref.watch(premiumProvider).isPremium ? l.premiumActive : l.upgradeToPremium),
+            subtitle: Text(ref.watch(premiumProvider).isPremium ? l.allFeaturesUnlocked : l.unlockAllFeatures),
             trailing: const Icon(Icons.arrow_forward_ios, size: 16),
             onTap: () {
               Navigator.push(context, MaterialPageRoute(builder: (_) => const PaywallScreen()));
             },
           ),
 
-          _buildSectionHeader(context, 'About'),
-          const ListTile(
-            title: Text('Version'),
-            subtitle: Text('1.0.0'),
+          _buildSectionHeader(context, l.about),
+          ListTile(
+            title: Text(l.version),
+            subtitle: const Text('1.0.0'),
           ),
           ListTile(
-            title: const Text('Show Tutorial'),
-            subtitle: const Text('View the onboarding guide again'),
+            title: Text(l.showTutorial),
+            subtitle: Text(l.showTutorialDesc),
             trailing: const Icon(Icons.arrow_forward_ios, size: 16),
             onTap: () {
-              Hive.box('settings').put('onboarding_complete', false);
+              ref.read(sharedPreferencesProvider).setBool('onboarding_complete', false);
               Navigator.pushAndRemoveUntil(
                 context,
                 MaterialPageRoute(builder: (_) => const OnboardingScreen()),

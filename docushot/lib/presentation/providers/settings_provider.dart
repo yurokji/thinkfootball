@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:hive/hive.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class AppSettings {
   final ThemeMode themeMode;
@@ -35,20 +35,20 @@ class AppSettings {
 }
 
 class SettingsNotifier extends Notifier<AppSettings> {
-  late final Box _box;
+  late final SharedPreferences _prefs;
 
   @override
   AppSettings build() {
-    _box = ref.watch(settingsBoxProvider);
-    return _loadFromBox();
+    _prefs = ref.watch(sharedPreferencesProvider);
+    return _loadFromPrefs();
   }
 
-  AppSettings _loadFromBox() {
-    final themeName = _box.get('themeMode', defaultValue: 'dark') as String;
-    final quality = _box.get('imageQuality', defaultValue: 'High') as String;
-    final autoCrop = _box.get('autoCrop', defaultValue: true) as bool;
-    final ocrLang = _box.get('ocrLanguage', defaultValue: 'latin') as String;
-    final locale = _box.get('locale', defaultValue: 'en') as String;
+  AppSettings _loadFromPrefs() {
+    final themeName = _prefs.getString('themeMode') ?? 'dark';
+    final quality = _prefs.getString('imageQuality') ?? 'High';
+    final autoCrop = _prefs.getBool('autoCrop') ?? true;
+    final ocrLang = _prefs.getString('ocrLanguage') ?? 'latin';
+    final locale = _prefs.getString('locale') ?? 'en';
 
     return AppSettings(
       themeMode: themeName == 'light' ? ThemeMode.light : (themeName == 'system' ? ThemeMode.system : ThemeMode.dark),
@@ -61,33 +61,33 @@ class SettingsNotifier extends Notifier<AppSettings> {
 
   void setThemeMode(ThemeMode mode) {
     final name = mode == ThemeMode.light ? 'light' : (mode == ThemeMode.system ? 'system' : 'dark');
-    _box.put('themeMode', name);
+    _prefs.setString('themeMode', name);
     state = state.copyWith(themeMode: mode);
   }
 
   void setImageQuality(String quality) {
-    _box.put('imageQuality', quality);
+    _prefs.setString('imageQuality', quality);
     state = state.copyWith(imageQuality: quality);
   }
 
   void setAutoCrop(bool value) {
-    _box.put('autoCrop', value);
+    _prefs.setBool('autoCrop', value);
     state = state.copyWith(autoCrop: value);
   }
 
   void setOcrLanguage(String language) {
-    _box.put('ocrLanguage', language);
+    _prefs.setString('ocrLanguage', language);
     state = state.copyWith(ocrLanguage: language);
   }
 
   void setLocale(String locale) {
-    _box.put('locale', locale);
+    _prefs.setString('locale', locale);
     state = state.copyWith(locale: locale);
   }
 }
 
-final settingsBoxProvider = Provider<Box>((ref) {
-  return Hive.box('settings');
+final sharedPreferencesProvider = Provider<SharedPreferences>((ref) {
+  throw UnimplementedError('sharedPreferencesProvider must be overridden at startup');
 });
 
 final settingsProvider = NotifierProvider<SettingsNotifier, AppSettings>(

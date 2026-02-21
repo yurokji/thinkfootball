@@ -16,17 +16,22 @@ dependencies:
   flutter_riverpod: ^3.2.1
 
   # Local Database
-  hive: ^2.2.3
-  hive_flutter: ^1.1.0
+  sqflite: ^2.4.2
+  shared_preferences: ^2.5.3
 
   # ML Kit
   google_mlkit_document_scanner: ^0.4.0
   google_mlkit_text_recognition: ^0.15.0
 
+  # Permissions
+  permission_handler: ^11.4.0
+
+  # In-App Purchase
+  in_app_purchase: ^3.2.0
+
   # Utilities
   pdf: ^3.10.0
   share_plus: ^12.0.1
-  gal: ^2.3.0
   archive: ^4.0.9
   path_provider: ^2.1.2
   uuid: ^4.3.3
@@ -34,23 +39,14 @@ dependencies:
 
   # UI
   reorderable_grid_view: ^2.2.5
-  flutter_slidable: ^4.0.3
   cupertino_icons: ^1.0.6
-  async: ^2.13.0
   image_picker: ^1.2.1
-  camera: ^0.11.4
-  image_cropper: ^11.0.0
   image: ^4.1.7 # For pixel-level manipulation (filters)
-  edge_detection:
-    path: packages/edge_detection
-  sensors_plus: ^7.0.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
-  build_runner: ^2.4.8
-  hive_generator: ^2.0.1
 
   flutter_launcher_icons: ^0.14.4
 
