@@ -47,8 +47,8 @@ class SettingsNotifier extends Notifier<AppSettings> {
     final themeName = _prefs.getString('themeMode') ?? 'dark';
     final quality = _prefs.getString('imageQuality') ?? 'High';
     final autoCrop = _prefs.getBool('autoCrop') ?? true;
-    final ocrLang = _prefs.getString('ocrLanguage') ?? 'latin';
     final locale = _prefs.getString('locale') ?? 'en';
+    final ocrLang = _prefs.getString('ocrLanguage') ?? _defaultOcrForLocale(locale);
 
     return AppSettings(
       themeMode: themeName == 'light' ? ThemeMode.light : (themeName == 'system' ? ThemeMode.system : ThemeMode.dark),
@@ -82,7 +82,22 @@ class SettingsNotifier extends Notifier<AppSettings> {
 
   void setLocale(String locale) {
     _prefs.setString('locale', locale);
-    state = state.copyWith(locale: locale);
+    // OCR 언어를 사용자가 수동 설정한 적 없으면 locale에 맞춰 자동 변경
+    if (!_prefs.containsKey('ocrLanguage')) {
+      state = state.copyWith(locale: locale, ocrLanguage: _defaultOcrForLocale(locale));
+    } else {
+      state = state.copyWith(locale: locale);
+    }
+  }
+}
+
+String _defaultOcrForLocale(String locale) {
+  switch (locale) {
+    case 'ko': return 'korean';
+    case 'ja': return 'japanese';
+    case 'zh': return 'chinese';
+    case 'hi': return 'devanagari';
+    default: return 'latin';
   }
 }
 

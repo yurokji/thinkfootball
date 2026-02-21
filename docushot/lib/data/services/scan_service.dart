@@ -6,13 +6,13 @@ import 'package:permission_handler/permission_handler.dart';
 /// Unified scanning service wrapping Google ML Kit Document Scanner.
 class ScanService {
   /// Opens the native ML Kit Scanner UI.
-  /// [pageLimit]: 0 = unlimited (batch), 1 = single page, N = max N pages.
+  /// [pageLimit]: max pages per session (must be >= 1). Default 100 for batch scanning.
   /// [isGalleryImport]: allow importing from gallery within the scanner.
   ///
   /// Throws on permission denial or scanner errors so the caller can display
   /// meaningful feedback to the user.
   Future<List<String>> scanDocuments({
-    int pageLimit = 0,
+    int pageLimit = 100,
     bool isGalleryImport = false,
   }) async {
     // Request camera permission at runtime (required on Android 6+)
